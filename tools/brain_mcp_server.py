@@ -103,6 +103,26 @@ def handle_brain_query(
     return "\n".join(files)
 
 
+def handle_brain_read(filepath: str, brain_path: str) -> str:
+    """Read a file from the brain and return its full content."""
+    full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
+    # Security: ensure path stays within the brain
+    brain_real = os.path.realpath(brain_path)
+    try:
+        file_real = os.path.realpath(full_path)
+    except Exception:
+        return f"Invalid path: {filepath}"
+    if not (file_real == brain_real or file_real.startswith(brain_real + "/")):
+        return f"Error: path is outside the brain: {filepath}"
+    if not os.path.isfile(full_path):
+        return f"File not found: {filepath}"
+    try:
+        with open(full_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"Error reading {filepath}: {e}"
+
+
 def handle_brain_create(template: str, title: str, brain_path: str) -> str:
     try:
         result = subprocess.run(
@@ -177,6 +197,17 @@ def main():
                     "required": ["filepath"],
                 },
             ),
+            Tool(
+                name="brain_read",
+                description="Read the full content of a note by filepath. Use when you need the complete document after finding it via brain_search or brain_query.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filepath": {"type": "string", "description": "Path as returned by brain_search or brain_query (e.g. /brain/Projects/...)"},
+                    },
+                    "required": ["filepath"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -208,6 +239,11 @@ def main():
                 filepath=arguments["filepath"],
                 limit=arguments.get("limit", 5),
                 db_path=db_path,
+                brain_path=brain_path,
+            )
+        elif name == "brain_read":
+            text = handle_brain_read(
+                filepath=arguments["filepath"],
                 brain_path=brain_path,
             )
         else:

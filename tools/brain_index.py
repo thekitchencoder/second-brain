@@ -100,6 +100,21 @@ def detect_embedding_dim() -> int:
     return dim
 
 
+def purge_stale_paths(db_path: str) -> None:
+    """Remove DB entries for filepaths that no longer exist on disk."""
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute("SELECT DISTINCT filepath FROM chunks").fetchall()
+        stale = [fp for (fp,) in rows if not os.path.isfile(fp)]
+        for fp in stale:
+            conn.execute("DELETE FROM chunks WHERE filepath=?", (fp,))
+            print(f"Purged stale: {fp}", file=sys.stderr)
+        if stale:
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def index_brain(brain_path: str, db_path: str) -> None:
     dim = detect_embedding_dim()
     try:
@@ -116,6 +131,7 @@ def index_brain(brain_path: str, db_path: str) -> None:
             filepath = os.path.join(root, fname)
             print(f"Indexing {filepath}", file=sys.stderr)
             index_file(filepath, db_path)
+    purge_stale_paths(db_path)
 
 
 def watch_brain(brain_path: str, db_path: str) -> None:
