@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from vault_search import format_result, search
+from brain_search import format_result, search
 
 
 @pytest.fixture
@@ -31,8 +31,8 @@ def test_format_result_includes_key_fields(mock_results):
 
 
 def test_search_calls_db(mock_results):
-    with patch("vault_search.get_embedding", return_value=[0.1] * 1024), \
-         patch("vault_search.search_chunks", return_value=mock_results) as mock_db:
+    with patch("brain_search.get_embedding", return_value=[0.1] * 1024), \
+         patch("brain_search.search_chunks", return_value=mock_results) as mock_db:
         results = search("test query", db_path="/tmp/fake.db", limit=3)
         mock_db.assert_called_once()
         assert len(results) == 1

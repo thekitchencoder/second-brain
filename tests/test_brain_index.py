@@ -2,11 +2,11 @@ import os
 import textwrap
 import pytest
 from unittest.mock import patch
-from vault_index import index_vault, index_file
+from brain_index import index_brain, index_file
 
 
 @pytest.fixture
-def vault(tmp_path):
+def brain(tmp_path):
     note = tmp_path / "test-note.md"
     note.write_text(textwrap.dedent("""\
         ---
@@ -26,46 +26,46 @@ def vault(tmp_path):
 
 @pytest.fixture
 def mock_embed():
-    with patch("vault_index.get_embedding") as mock:
+    with patch("brain_index.get_embedding") as mock:
         mock.return_value = [0.1] * 1024
         yield mock
 
 
-def test_index_file_creates_chunks(vault, mock_embed):
-    db_path = str(vault / ".ai" / "embeddings.db")
+def test_index_file_creates_chunks(brain, mock_embed):
+    db_path = str(brain / ".ai" / "embeddings.db")
     from lib.db import init_db
     init_db(db_path, embedding_dim=1024)
 
-    filepath = str(vault / "test-note.md")
+    filepath = str(brain / "test-note.md")
     index_file(filepath, db_path)
 
     mock_embed.assert_called()
 
 
-def test_index_vault_processes_markdown_files(vault, mock_embed):
-    db_path = str(vault / ".ai" / "embeddings.db")
-    index_vault(str(vault), db_path)
+def test_index_brain_processes_markdown_files(brain, mock_embed):
+    db_path = str(brain / ".ai" / "embeddings.db")
+    index_brain(str(brain), db_path)
     mock_embed.assert_called()
 
 
-def test_index_vault_skips_dotdirectories(vault, mock_embed):
-    obsidian_dir = vault / ".obsidian"
+def test_index_brain_skips_dotdirectories(brain, mock_embed):
+    obsidian_dir = brain / ".obsidian"
     obsidian_dir.mkdir()
     (obsidian_dir / "config.json").write_text("{}")
 
-    db_path = str(vault / ".ai" / "embeddings.db")
-    index_vault(str(vault), db_path)
+    db_path = str(brain / ".ai" / "embeddings.db")
+    index_brain(str(brain), db_path)
 
     # Should only have been called for the one real note
     assert mock_embed.call_count >= 1
 
 
-def test_index_file_skips_unchanged_chunks(vault, mock_embed):
-    db_path = str(vault / ".ai" / "embeddings.db")
+def test_index_file_skips_unchanged_chunks(brain, mock_embed):
+    db_path = str(brain / ".ai" / "embeddings.db")
     from lib.db import init_db
     init_db(db_path, embedding_dim=1024)
 
-    filepath = str(vault / "test-note.md")
+    filepath = str(brain / "test-note.md")
     index_file(filepath, db_path)
     first_call_count = mock_embed.call_count
 
