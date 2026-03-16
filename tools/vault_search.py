@@ -40,7 +40,7 @@ def format_result(result: dict) -> str:
         f"  Status:  {result.get('status', '-')}",
         f"  Created: {result.get('created', '-')}",
         f"  Tags:    {tags or '-'}",
-        f"  Score:   {result['distance']:.4f}",
+        f"  Score:   {result.get('distance', 0.0):.4f}",
         "",
         f"  {result['content'][:300].strip()}",
         "",
