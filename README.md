@@ -142,7 +142,8 @@ The brain container must be running before starting Claude Desktop.
 | `brain_search(query, limit?)` | Semantic search — returns results with full frontmatter provenance |
 | `brain_query(tag?, status?, type?)` | Structured metadata query via zk |
 | `brain_read(filepath)` | Read the full content of a note by filepath |
-| `brain_create(template, title)` | Create a note from a template |
+| `brain_write(filepath, content)` | Write content to a note (use after `brain_create`) |
+| `brain_create(template, title)` | Create a note stub from a template, returns filepath |
 | `brain_templates()` | List available templates — call before `brain_create` |
 | `brain_related(filepath, limit?)` | Find semantically related notes |
 
