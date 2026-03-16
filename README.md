@@ -1,18 +1,15 @@
 # second-brain
 
-Docker container for brain management: zk, semantic search, and MCP server for Claude Code.
+Docker container for brain management: zk, semantic search, and MCP server for Claude Code and Claude Desktop.
 
 ## Quick start
 
 ```bash
 # Copy and configure
 cp .env.example .env
-# Edit BRAIN_PATH in .env to point at your brain (default: ~/Documents/Vault33)
+# Edit BRAIN_HOST_PATH in .env to point at your notes directory
 
-# Build
-docker compose build
-
-# Start (runs in background)
+# Start (pulls image from Docker Hub)
 docker compose up -d
 
 # Shell into the container
@@ -20,6 +17,9 @@ docker exec -it brain zsh
 
 # Initialise a brain (first time only)
 brain-init
+
+# Index for semantic search
+brain-index run
 ```
 
 ## Host aliases
@@ -31,13 +31,13 @@ Add to `~/.zshrc` or `~/.bashrc`:
 alias brain='docker exec -it brain zsh'
 
 # Semantic search from host
-alias vsearch='docker exec brain brain-search'
+alias bsearch='docker exec brain brain-search'
 
 # Index brain from host
-alias vindex='docker exec brain brain-index run'
+alias bindex='docker exec brain brain-index run'
 
 # Watch mode (background indexing)
-alias vwatch='docker exec -d brain brain-index watch'
+alias bwatch='docker exec -d brain brain-index watch'
 ```
 
 After adding: `source ~/.zshrc`
@@ -66,24 +66,46 @@ brain-search "query" --json
 
 ```bash
 zk new --title "My Note"
+zk new --template context-primer --title "Project X — Context"
+zk new --template project --title "Project X"
 zk new --template meeting --title "Team Sync"
 zk new --template daily
 zk new --template effort --title "Project X"
+zk new --template spec --title "Feature Y"
+zk new --template adr --title "Use SQLite for storage"
+zk new --template discovery --title "Interesting idea"
 ```
 
 ### Index
 
 ```bash
-# Full reindex
+# Full reindex (also purges stale entries)
 brain-index run
 
 # Watch for changes (incremental)
 brain-index watch
 ```
 
-## MCP server (Claude Code integration)
+### Template sync (Obsidian + zk)
 
-Add to `~/.claude/mcp.json`:
+If you use both Obsidian and the Docker TUI, keep templates in sync:
+
+```bash
+# Check sync state
+brain-template-sync status
+
+# After editing an Obsidian template, push to zk
+brain-template-sync obsidian-to-zk
+
+# After adding a new zk template, push to Obsidian
+brain-template-sync zk-to-obsidian
+```
+
+## MCP server (Claude Code + Claude Desktop)
+
+### Claude Code
+
+Add to `.mcp.json` in your project root (or `~/.claude/mcp.json` for global):
 
 ```json
 {
@@ -96,20 +118,61 @@ Add to `~/.claude/mcp.json`:
 }
 ```
 
-Available tools:
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "brain": {
+      "command": "docker",
+      "args": ["exec", "-i", "brain", "brain-mcp-server"]
+    }
+  }
+}
+```
+
+The brain container must be running before starting Claude Desktop.
+
+### Available tools
 
 | Tool | Description |
 |---|---|
 | `brain_search(query, limit?)` | Semantic search — returns results with full frontmatter provenance |
 | `brain_query(tag?, status?, type?)` | Structured metadata query via zk |
+| `brain_read(filepath)` | Read the full content of a note by filepath |
 | `brain_create(template, title)` | Create a note from a template |
+| `brain_templates()` | List available templates — call before `brain_create` |
 | `brain_related(filepath, limit?)` | Find semantically related notes |
+
+## Skills
+
+Pre-built Claude Code skills are included in the `skills/` directory.
+
+### Claude Code
+
+```bash
+cp -r skills/brain-* ~/.claude/skills/
+```
+
+### Claude Desktop
+
+Zip each skill folder and upload via **Customize → Skills**:
+
+```bash
+cd skills && for d in brain-*/; do zip -r "${d%/}.zip" "$d"; done
+```
+
+Then upload each `.zip` in Claude Desktop → Customize → Skills.
+
+See [`skills/README.md`](skills/README.md) for details on what each skill does.
 
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
-| `BRAIN_PATH` | `~/Documents/Vault33` | Path to brain on the host |
+| `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host |
 | `EMBEDDING_BASE_URL` | Docker Model Runner | OpenAI-compatible embedding endpoint |
 | `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name |
 | `EMBEDDING_DIM` | `1024` | Embedding vector dimension — must match model |
@@ -133,7 +196,7 @@ CHAT_BASE_URL=http://host.docker.internal:1234/v1
 
 ## Brain structure
 
-The container works with any brain structure. On first use, `brain-init` adds:
+The container works with any notes directory. On first use, `brain-init` adds:
 
 ```
 your-brain/
@@ -141,21 +204,16 @@ your-brain/
 │   ├── config.toml
 │   └── templates/
 │       ├── default.md
-│       ├── daily.md
+│       ├── context-primer.md
+│       ├── project.md
+│       ├── spec.md
+│       ├── adr.md
+│       ├── discovery.md
+│       ├── effort.md
 │       ├── meeting.md
-│       └── effort.md
+│       └── daily.md
 └── .ai/
     └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
 ```
 
-Both `.zk/` and `.ai/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your personal machine.
-
-## Skills
-
-Pre-built Claude Code skills are included in the `skills/` directory:
-
-```bash
-cp -r skills/brain-* ~/.claude/skills/
-```
-
-See [`skills/README.md`](skills/README.md) for details.
+Both `.zk/` and `.ai/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine.
