@@ -24,9 +24,21 @@ RUN ARCH=$(dpkg --print-architecture) && \
     | tar xz -C /usr/local/bin/ zk && \
     chmod +x /usr/local/bin/zk
 
-# Python dependencies
+# Python dependencies (install without sqlite-vec first, then build sqlite-vec from source)
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir $(grep -v sqlite-vec /tmp/requirements.txt | tr '\n' ' ')
+
+# Build sqlite-vec from source (PyPI aarch64 wheel contains a 32-bit binary)
+ARG SQLITE_VEC_VERSION=0.1.6
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-dev wget \
+    && cd /tmp \
+    && wget -q "https://github.com/asg017/sqlite-vec/releases/download/v${SQLITE_VEC_VERSION}/sqlite-vec-${SQLITE_VEC_VERSION}-amalgamation.tar.gz" \
+    && tar xzf "sqlite-vec-${SQLITE_VEC_VERSION}-amalgamation.tar.gz" \
+    && pip install --no-cache-dir --no-binary sqlite-vec "sqlite-vec>=${SQLITE_VEC_VERSION}" \
+    && gcc -shared -fPIC -I/usr/include -o /usr/local/lib/python3.12/site-packages/sqlite_vec/vec0.so sqlite-vec.c -lm \
+    && apt-get remove -y gcc libsqlite3-dev wget \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /tmp/sqlite-vec*
 
 # Vault tools
 COPY tools/ /usr/local/lib/vault-tools/
