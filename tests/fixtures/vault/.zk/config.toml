@@ -1,0 +1,7 @@
+[note]
+filename = "{{slug title}}"
+extension = "md"
+default-title = "Untitled"
+
+[tool]
+fzf-preview = "bat -p --color always {-1}"
