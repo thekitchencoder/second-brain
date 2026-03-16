@@ -13,7 +13,7 @@ author = "Chris"
 
 [tool]
 pager = "cat"
-fzf-preview = "bat --color=always --style=plain --theme=TwoDark /vault/{}"
+fzf-preview = "bat --color=always --style=plain --theme=TwoDark /brain/{}"
 
 [filter]
 recents = "--sort created- --created-after '2 weeks ago'"

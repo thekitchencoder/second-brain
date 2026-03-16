@@ -1,13 +1,13 @@
 # second-brain
 
-Docker container for vault management: zk, semantic search, and MCP server for Claude Code.
+Docker container for brain management: zk, semantic search, and MCP server for Claude Code.
 
 ## Quick start
 
 ```bash
 # Copy and configure
 cp .env.example .env
-# Edit VAULT_PATH in .env to point at your vault (default: ~/Documents/Vault33)
+# Edit BRAIN_PATH in .env to point at your brain (default: ~/Documents/Vault33)
 
 # Build
 docker compose build
@@ -16,10 +16,10 @@ docker compose build
 docker compose up -d
 
 # Shell into the container
-docker exec -it vault zsh
+docker exec -it brain zsh
 
-# Initialise a vault (first time only)
-vault-init
+# Initialise a brain (first time only)
+brain-init
 ```
 
 ## Host aliases
@@ -27,17 +27,17 @@ vault-init
 Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-# Drop into vault shell
-alias vault='docker exec -it vault zsh'
+# Drop into brain shell
+alias brain='docker exec -it brain zsh'
 
 # Semantic search from host
-alias vsearch='docker exec vault vault-search'
+alias vsearch='docker exec brain brain-search'
 
-# Index vault from host
-alias vindex='docker exec vault vault-index run'
+# Index brain from host
+alias vindex='docker exec brain brain-index run'
 
 # Watch mode (background indexing)
-alias vwatch='docker exec -d vault vault-index watch'
+alias vwatch='docker exec -d brain brain-index watch'
 ```
 
 After adding: `source ~/.zshrc`
@@ -57,9 +57,9 @@ zk list $recents
 zk list | fzf --preview 'bat --color=always {}'
 
 # Semantic search
-vault-search "co-dependent confabulation"
-vault-search "embedding models" --limit 10
-vault-search "query" --json
+brain-search "co-dependent confabulation"
+brain-search "embedding models" --limit 10
+brain-search "query" --json
 ```
 
 ### Create notes
@@ -75,10 +75,10 @@ zk new --template effort --title "Project X"
 
 ```bash
 # Full reindex
-vault-index run
+brain-index run
 
 # Watch for changes (incremental)
-vault-index watch
+brain-index watch
 ```
 
 ## MCP server (Claude Code integration)
@@ -88,9 +88,9 @@ Add to `~/.claude/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "vault": {
+    "brain": {
       "command": "docker",
-      "args": ["exec", "-i", "vault", "vault-mcp-server"]
+      "args": ["exec", "-i", "brain", "brain-mcp-server"]
     }
   }
 }
@@ -100,16 +100,16 @@ Available tools:
 
 | Tool | Description |
 |---|---|
-| `vault_search(query, limit?)` | Semantic search — returns results with full frontmatter provenance |
-| `vault_query(tag?, status?, type?)` | Structured metadata query via zk |
-| `vault_create(template, title)` | Create a note from a template |
-| `vault_related(filepath, limit?)` | Find semantically related notes |
+| `brain_search(query, limit?)` | Semantic search — returns results with full frontmatter provenance |
+| `brain_query(tag?, status?, type?)` | Structured metadata query via zk |
+| `brain_create(template, title)` | Create a note from a template |
+| `brain_related(filepath, limit?)` | Find semantically related notes |
 
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
-| `VAULT_PATH` | `~/Documents/Vault33` | Path to vault on the host |
+| `BRAIN_PATH` | `~/Documents/Vault33` | Path to brain on the host |
 | `EMBEDDING_BASE_URL` | Docker Model Runner | OpenAI-compatible embedding endpoint |
 | `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name |
 | `EMBEDDING_DIM` | `1024` | Embedding vector dimension — must match model |
@@ -131,13 +131,13 @@ EMBEDDING_BASE_URL=http://host.docker.internal:1234/v1
 CHAT_BASE_URL=http://host.docker.internal:1234/v1
 ```
 
-## Vault structure
+## Brain structure
 
-The container works with any vault structure. On first use, `vault-init` adds:
+The container works with any brain structure. On first use, `brain-init` adds:
 
 ```
-your-vault/
-├── .zk/                  ← zk config and templates (created by vault-init)
+your-brain/
+├── .zk/                  ← zk config and templates (created by brain-init)
 │   ├── config.toml
 │   └── templates/
 │       ├── default.md
@@ -145,7 +145,17 @@ your-vault/
 │       ├── meeting.md
 │       └── effort.md
 └── .ai/
-    └── embeddings.db     ← sqlite-vec vector index (created by vault-index)
+    └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
 ```
 
-Both `.zk/` and `.ai/` are ignored by Obsidian. The vault remains fully compatible with Obsidian on your personal machine.
+Both `.zk/` and `.ai/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your personal machine.
+
+## Skills
+
+Pre-built Claude Code skills are included in the `skills/` directory:
+
+```bash
+cp -r skills/brain-* ~/.claude/skills/
+```
+
+See [`skills/README.md`](skills/README.md) for details.
