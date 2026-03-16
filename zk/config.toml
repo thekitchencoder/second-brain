@@ -1,3 +1,6 @@
+[notebook]
+exclude = ["templates/"]
+
 [note]
 filename = "{{slug title}}"
 extension = "md"
@@ -9,6 +12,7 @@ id-length = 0
 author = "Chris"
 
 [tool]
+pager = "cat"
 fzf-preview = "bat --color=always --style=plain {path}"
 
 [filter]
