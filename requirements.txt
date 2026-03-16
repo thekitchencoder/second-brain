@@ -1,8 +1,8 @@
-openai>=1.0.0
+openai>=1.0.0,<2.0.0
 pyyaml>=6.0
-sqlite-vec>=0.1.0
+sqlite-vec>=0.1.1
 watchfiles>=0.21.0
-mcp>=1.0.0
+mcp>=1.1.0
 numpy>=1.26.0
 pytest>=8.0.0
 pytest-mock>=3.12.0
