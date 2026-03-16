@@ -115,7 +115,7 @@ def handle_brain_templates(brain_path: str) -> str:
     )
     if not names:
         return "No templates found."
-    return "Available templates:\n" + "\n".join(f"  {n}" for n in names)
+    return "Available templates (use these exact names with brain_create):\n" + "\n".join(f"  {n}" for n in names)
 
 
 def handle_brain_read(filepath: str, brain_path: str) -> str:
@@ -139,9 +139,12 @@ def handle_brain_read(filepath: str, brain_path: str) -> str:
 
 
 def handle_brain_create(template: str, title: str, brain_path: str) -> str:
+    # zk requires the .md extension on template names
+    if not template.endswith(".md"):
+        template = template + ".md"
     try:
         result = subprocess.run(
-            ["zk", "new", "--template", template, "--title", title],
+            ["zk", "new", "--template", template, "--title", title, "--print-path"],
             cwd=brain_path, capture_output=True, text=True
         )
     except FileNotFoundError:
