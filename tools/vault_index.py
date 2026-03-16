@@ -10,7 +10,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from openai import OpenAI
+from openai import OpenAI, NotFoundError, APIConnectionError
 
 from lib.clean import chunk_text, clean_content, extract_frontmatter
 from lib.config import Config
@@ -31,11 +31,22 @@ def _get_client() -> OpenAI:
 
 
 def get_embedding(text: str) -> list[float]:
-    response = _get_client().embeddings.create(
-        input=text,
-        model=_cfg.embedding_model,
-    )
-    return response.data[0].embedding
+    try:
+        response = _get_client().embeddings.create(
+            input=text,
+            model=_cfg.embedding_model,
+        )
+        return response.data[0].embedding
+    except NotFoundError:
+        print(f"\nError: embedding model '{_cfg.embedding_model}' not found.", file=sys.stderr)
+        print(f"  Endpoint: {_cfg.embedding_base_url}", file=sys.stderr)
+        print(f"  Check that the model is loaded and EMBEDDING_MODEL is set correctly.", file=sys.stderr)
+        sys.exit(1)
+    except APIConnectionError:
+        print(f"\nError: cannot connect to embedding endpoint.", file=sys.stderr)
+        print(f"  Endpoint: {_cfg.embedding_base_url}", file=sys.stderr)
+        print(f"  Is Docker Model Runner (or your configured LLM server) running?", file=sys.stderr)
+        sys.exit(1)
 
 
 def index_file(filepath: str, db_path: str) -> None:
