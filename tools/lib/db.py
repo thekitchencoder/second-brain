@@ -13,8 +13,38 @@ def _connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def init_db(db_path: str, embedding_dim: int) -> None:
-    """Create tables if they don't exist. Idempotent."""
+def get_stored_dim(db_path: str) -> int | None:
+    """Return the embedding dimension stored in an existing DB, or None if not initialised."""
+    import os
+    if not os.path.exists(db_path):
+        return None
+    try:
+        conn = _connect(db_path)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='embedding_dim'").fetchone()
+            return int(row[0]) if row else None
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
+def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
+    """Create tables if they don't exist. Idempotent.
+
+    Raises ValueError if the DB already exists with a different embedding dimension —
+    delete the DB file and reindex to switch models.
+    """
+    stored_dim = get_stored_dim(db_path)
+    if stored_dim is not None and stored_dim != embedding_dim:
+        raise ValueError(
+            f"Dimension mismatch: existing index uses {stored_dim}-dim embeddings "
+            f"but current model produces {embedding_dim}-dim embeddings.\n"
+            f"To switch models, delete the index and reindex:\n"
+            f"  rm {db_path}\n"
+            f"  vault-index run"
+        )
+
     conn = _connect(db_path)
     try:
         conn.executescript(f"""
@@ -41,6 +71,10 @@ def init_db(db_path: str, embedding_dim: int) -> None:
             );
             INSERT OR IGNORE INTO meta VALUES ('embedding_dim', '{embedding_dim}');
         """)
+        if model:
+            conn.execute(
+                "INSERT OR REPLACE INTO meta VALUES ('embedding_model', ?)", (model,)
+            )
         conn.commit()
     finally:
         conn.close()

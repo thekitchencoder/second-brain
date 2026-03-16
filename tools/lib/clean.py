@@ -55,6 +55,10 @@ def _simplify_table_line(line: str) -> str:
 
 def clean_content(content: str) -> str:
     """Clean document content for embedding. Strips noise, preserves prose."""
+    # Strip invisible Unicode characters (zero-width spaces, soft hyphens, etc.)
+    # These inflate token counts dramatically in PDF-extracted content
+    content = re.sub(r'[\u200b\u200c\u200d\u00ad\ufeff\u2060]', '', content)
+
     # Collapse fenced code blocks first (before line-by-line processing)
     content = _CODE_BLOCK_RE.sub(_collapse_code_block, content)
 
@@ -70,9 +74,10 @@ def clean_content(content: str) -> str:
     return result.strip()
 
 
-# ~4 chars per token; 400 tokens ≈ 1600 chars; 50-token overlap ≈ 200 chars
-_CHUNK_SIZE = 1600
-_CHUNK_OVERLAP = 200
+# ~3 chars per token for normal prose. get_embedding() halves input on token-limit errors,
+# so chunk generously — the embedder will adapt to dense content automatically.
+_CHUNK_SIZE = 1200
+_CHUNK_OVERLAP = 100
 
 
 def chunk_text(text: str) -> list[str]:
