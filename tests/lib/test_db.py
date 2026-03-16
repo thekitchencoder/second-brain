@@ -1,0 +1,77 @@
+# tests/lib/test_db.py
+import json
+import sqlite3
+import pytest
+from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings
+
+
+@pytest.fixture
+def db_path(tmp_path):
+    return str(tmp_path / "test.db")
+
+
+def test_init_db_creates_tables(db_path):
+    init_db(db_path, embedding_dim=4)
+    conn = sqlite3.connect(db_path)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert "chunks" in tables
+    conn.close()
+
+
+def test_upsert_chunk_inserts(db_path):
+    init_db(db_path, embedding_dim=4)
+    upsert_chunk(
+        db_path=db_path,
+        filepath="notes/foo.md",
+        chunk_index=0,
+        content="Some content here.",
+        content_hash="abc123",
+        embedding=[0.1, 0.2, 0.3, 0.4],
+        meta={"title": "Foo", "type": "note", "status": "draft",
+              "created": "2026-03-16", "tags": ["a"], "scope": None},
+    )
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT filepath, title, type FROM chunks").fetchone()
+    assert row == ("notes/foo.md", "Foo", "note")
+    conn.close()
+
+
+def test_upsert_chunk_updates_on_conflict(db_path):
+    init_db(db_path, embedding_dim=4)
+    meta = {"title": "Foo", "type": "note", "status": "draft",
+            "created": "2026-03-16", "tags": [], "scope": None}
+    upsert_chunk(db_path, "notes/foo.md", 0, "Original.", "hash1", [0.1]*4, meta)
+    upsert_chunk(db_path, "notes/foo.md", 0, "Updated.", "hash2", [0.2]*4, meta)
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute("SELECT content FROM chunks WHERE filepath='notes/foo.md'").fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "Updated."
+    conn.close()
+
+
+def test_search_chunks_returns_results(db_path):
+    init_db(db_path, embedding_dim=4)
+    meta = {"title": "Foo", "type": "note", "status": "current",
+            "created": "2026-03-16", "tags": ["test"], "scope": "testing"}
+    upsert_chunk(db_path, "notes/foo.md", 0, "Content about foo.", "h1", [1.0, 0.0, 0.0, 0.0], meta)
+    upsert_chunk(db_path, "notes/bar.md", 0, "Content about bar.", "h2", [0.0, 1.0, 0.0, 0.0], meta)
+
+    results = search_chunks(db_path, query_embedding=[1.0, 0.0, 0.0, 0.0], limit=1)
+    assert len(results) == 1
+    assert results[0]["filepath"] == "notes/foo.md"
+    assert results[0]["title"] == "Foo"
+    assert results[0]["type"] == "note"
+    assert results[0]["status"] == "current"
+    assert "distance" in results[0]
+
+
+def test_get_chunk_embeddings_returns_vectors(db_path):
+    init_db(db_path, embedding_dim=4)
+    meta = {"title": "X", "type": "note", "status": "draft",
+            "created": "2026-03-16", "tags": [], "scope": None}
+    upsert_chunk(db_path, "notes/x.md", 0, "text", "h1", [0.1, 0.2, 0.3, 0.4], meta)
+    upsert_chunk(db_path, "notes/x.md", 1, "more", "h2", [0.5, 0.6, 0.7, 0.8], meta)
+
+    vectors = get_chunk_embeddings(db_path, "notes/x.md")
+    assert len(vectors) == 2
+    assert len(vectors[0]) == 4
