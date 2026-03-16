@@ -1,0 +1,11 @@
+services:
+  vault:
+    build: .
+    container_name: vault
+    volumes:
+      - ${VAULT_PATH:-~/Documents/Vault33}:/vault
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
