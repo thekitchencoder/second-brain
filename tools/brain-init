@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""vault-init: initialise a vault for use with vault tools.
+"""brain-init: initialise a second-brain for use with brain tools.
 
-Copies .zk config and templates into the vault.
+Copies .zk config and templates into the brain directory.
 Creates .ai directory for embeddings.
 Idempotent — safe to run multiple times.
 """
@@ -13,19 +13,19 @@ import sys
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 _ZK_SOURCE_CANDIDATES = [
-    os.path.join(_REPO_ROOT, "zk"),           # local dev
-    "/usr/local/lib/vault-tools/zk",          # inside container
+    os.path.join(_REPO_ROOT, "zk"),            # local dev
+    "/usr/local/lib/brain-tools/zk",           # inside container
 ]
 
 
-def init_vault(vault_path: str) -> None:
+def init_brain(brain_path: str) -> None:
     zk_source = next((p for p in _ZK_SOURCE_CANDIDATES if os.path.isdir(p)), None)
     if zk_source is None:
         print("Error: could not find zk config source directory.", file=sys.stderr)
         sys.exit(1)
 
-    zk_dest = os.path.join(vault_path, ".zk")
-    ai_dest = os.path.join(vault_path, ".ai")
+    zk_dest = os.path.join(brain_path, ".zk")
+    ai_dest = os.path.join(brain_path, ".ai")
 
     if os.path.isdir(zk_dest):
         print(f".zk already exists at {zk_dest}, skipping.")
@@ -35,12 +35,12 @@ def init_vault(vault_path: str) -> None:
 
     os.makedirs(ai_dest, exist_ok=True)
     print(f"Ensured {ai_dest} exists")
-    print("Vault initialised.")
+    print("Brain initialised.")
 
 
 if __name__ == "__main__":
-    vault_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("VAULT_PATH", "/vault")
-    if not os.path.isdir(vault_path):
-        print(f"Error: vault path does not exist: {vault_path}", file=sys.stderr)
+    brain_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("BRAIN_PATH", "/brain")
+    if not os.path.isdir(brain_path):
+        print(f"Error: brain path does not exist: {brain_path}", file=sys.stderr)
         sys.exit(1)
-    init_vault(vault_path)
+    init_brain(brain_path)
