@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""brain-template-sync: sync templates between Obsidian and zk formats.
+
+Obsidian templates use:   {{date}}, {{time}}, {{title}}
+zk templates use:         {{format-date now "2006-01-02"}}, {{format-date now "15:04:05"}}, {{title}}
+
+Usage:
+  brain-template-sync obsidian-to-zk   Convert /brain/templates/ → /brain/.zk/templates/
+  brain-template-sync zk-to-obsidian   Convert /brain/.zk/templates/ → /brain/templates/
+  brain-template-sync status           Show sync state of all templates
+"""
+import os
+import re
+import sys
+from pathlib import Path
+
+from lib.config import Config
+
+_cfg = Config()
+
+OBSIDIAN_DIR = Path(_cfg.brain_path) / "templates"
+ZK_DIR = Path(_cfg.brain_path) / ".zk" / "templates"
+
+# Order matters: combined datetime must be replaced before individual date/time
+_OBS_TO_ZK = [
+    (r"\{\{date\}\}T\{\{time\}\}", '{{format-date now "2006-01-02T15:04:05"}}'),
+    (r"\{\{date\}\}",              '{{format-date now "2006-01-02"}}'),
+    (r"\{\{time\}\}",              '{{format-date now "15:04:05"}}'),
+]
+
+_ZK_TO_OBS = [
+    (r'\{\{format-date now "2006-01-02T15:04:05"\}\}', "{{date}}T{{time}}"),
+    (r'\{\{format-date now "2006-01-02"\}\}',          "{{date}}"),
+    (r'\{\{format-date now "15:04:05"\}\}',            "{{time}}"),
+]
+
+
+def _convert(content: str, rules: list[tuple[str, str]]) -> tuple[str, list[str]]:
+    """Apply substitution rules. Returns (converted_content, list_of_warnings)."""
+    warnings = []
+    for pattern, replacement in rules:
+        content = re.sub(pattern, replacement, content)
+    # Detect any remaining unknown Obsidian-style variables (single braces are normal YAML)
+    unknowns = re.findall(r"\{\{(?!format-date|title|slug)[^}]+\}\}", content)
+    if unknowns:
+        warnings.append(f"unrecognised variables left unconverted: {', '.join(set(unknowns))}")
+    return content, warnings
+
+
+def _stem(path: Path) -> str:
+    return path.stem  # filename without extension
+
+
+def cmd_status() -> None:
+    obs = {p.stem: p for p in OBSIDIAN_DIR.glob("*.md")} if OBSIDIAN_DIR.exists() else {}
+    zk = {p.stem: p for p in ZK_DIR.glob("*.md")} if ZK_DIR.exists() else {}
+    all_names = sorted(obs.keys() | zk.keys())
+
+    print(f"{'Template':<30} {'Obsidian':^10} {'zk':^10}")
+    print("-" * 52)
+    for name in all_names:
+        o = "✓" if name in obs else "—"
+        z = "✓" if name in zk else "—"
+        note = ""
+        if name in obs and name in zk:
+            # Compare by converting Obsidian → zk and checking if zk content matches
+            obs_converted, _ = _convert(obs[name].read_text(encoding="utf-8"), _OBS_TO_ZK)
+            zk_content = zk[name].read_text(encoding="utf-8")
+            if obs_converted.strip() != zk_content.strip():
+                note = " (out of sync)"
+        print(f"{name:<30} {o:^10} {z:^10}{note}")
+
+
+def cmd_obsidian_to_zk() -> None:
+    if not OBSIDIAN_DIR.exists():
+        print(f"Obsidian templates directory not found: {OBSIDIAN_DIR}", file=sys.stderr)
+        sys.exit(1)
+    ZK_DIR.mkdir(parents=True, exist_ok=True)
+    for src in sorted(OBSIDIAN_DIR.glob("*.md")):
+        content, warnings = _convert(src.read_text(encoding="utf-8"), _OBS_TO_ZK)
+        dest = ZK_DIR / src.name
+        dest.write_text(content, encoding="utf-8")
+        status = "updated" if dest.exists() else "created"
+        print(f"  {status}: {dest.name}")
+        for w in warnings:
+            print(f"    warning: {w}")
+
+
+def cmd_zk_to_obsidian() -> None:
+    if not ZK_DIR.exists():
+        print(f"zk templates directory not found: {ZK_DIR}", file=sys.stderr)
+        sys.exit(1)
+    OBSIDIAN_DIR.mkdir(parents=True, exist_ok=True)
+    for src in sorted(ZK_DIR.glob("*.md")):
+        content, warnings = _convert(src.read_text(encoding="utf-8"), _ZK_TO_OBS)
+        dest = OBSIDIAN_DIR / src.name
+        dest.write_text(content, encoding="utf-8")
+        status = "updated" if dest.exists() else "created"
+        print(f"  {status}: {dest.name}")
+        for w in warnings:
+            print(f"    warning: {w}")
+
+
+def main() -> None:
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "status":
+        cmd_status()
+    elif cmd == "obsidian-to-zk":
+        print(f"Converting Obsidian → zk  ({OBSIDIAN_DIR} → {ZK_DIR})")
+        cmd_obsidian_to_zk()
+        print("Done.")
+    elif cmd == "zk-to-obsidian":
+        print(f"Converting zk → Obsidian  ({ZK_DIR} → {OBSIDIAN_DIR})")
+        cmd_zk_to_obsidian()
+        print("Done.")
+    else:
+        print(__doc__)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

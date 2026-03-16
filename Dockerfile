@@ -48,7 +48,8 @@ COPY zk/ /usr/local/lib/brain-tools/zk/
 RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-search \
               /usr/local/lib/brain-tools/brain-mcp-server \
-              /usr/local/lib/brain-tools/brain-init
+              /usr/local/lib/brain-tools/brain-init \
+              /usr/local/lib/brain-tools/brain-template-sync
 
 # Add tools to PATH and Python path
 ENV PATH="/usr/local/lib/brain-tools:$PATH"
