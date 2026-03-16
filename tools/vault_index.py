@@ -10,7 +10,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from openai import OpenAI, NotFoundError, APIConnectionError
+from openai import OpenAI, NotFoundError, APIConnectionError, InternalServerError
 
 from lib.clean import chunk_text, clean_content, extract_frontmatter
 from lib.config import Config
@@ -30,13 +30,18 @@ def _get_client() -> OpenAI:
     return _client
 
 
-def get_embedding(text: str) -> list[float]:
+def get_embedding(text: str, max_chars: int = 1500) -> list[float]:
+    """Get embedding, halving input on token-limit errors until it fits."""
     try:
         response = _get_client().embeddings.create(
-            input=text,
+            input=text[:max_chars],
             model=_cfg.embedding_model,
         )
         return response.data[0].embedding
+    except InternalServerError as e:
+        if "too large" in str(e) and max_chars > 100:
+            return get_embedding(text, max_chars // 2)
+        raise
     except NotFoundError:
         print(f"\nError: embedding model '{_cfg.embedding_model}' not found.", file=sys.stderr)
         print(f"  Endpoint: {_cfg.embedding_base_url}", file=sys.stderr)
@@ -86,8 +91,22 @@ def index_file(filepath: str, db_path: str) -> None:
         )
 
 
+def detect_embedding_dim() -> int:
+    """Call the embedding API once to get the actual output dimension."""
+    print(f"Detecting embedding dimension for {_cfg.embedding_model}...", file=sys.stderr)
+    vec = get_embedding("dimension probe")
+    dim = len(vec)
+    print(f"  → {dim} dimensions", file=sys.stderr)
+    return dim
+
+
 def index_vault(vault_path: str, db_path: str) -> None:
-    init_db(db_path, embedding_dim=_cfg.embedding_dim)
+    dim = detect_embedding_dim()
+    try:
+        init_db(db_path, embedding_dim=dim, model=_cfg.embedding_model)
+    except ValueError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
     for root, dirs, files in os.walk(vault_path):
         # Skip hidden directories (.obsidian, .zk, .ai, .git)
         dirs[:] = [d for d in dirs if not d.startswith(".")]
