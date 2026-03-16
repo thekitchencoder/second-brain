@@ -42,17 +42,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /tmp/sqlite-vec*
 
-# Vault tools
-COPY tools/ /usr/local/lib/vault-tools/
-COPY zk/ /usr/local/lib/vault-tools/zk/
-RUN chmod +x /usr/local/lib/vault-tools/vault-index \
-              /usr/local/lib/vault-tools/vault-search \
-              /usr/local/lib/vault-tools/vault-mcp-server \
-              /usr/local/lib/vault-tools/vault-init
+# Brain tools
+COPY tools/ /usr/local/lib/brain-tools/
+COPY zk/ /usr/local/lib/brain-tools/zk/
+RUN chmod +x /usr/local/lib/brain-tools/brain-index \
+              /usr/local/lib/brain-tools/brain-search \
+              /usr/local/lib/brain-tools/brain-mcp-server \
+              /usr/local/lib/brain-tools/brain-init
 
 # Add tools to PATH and Python path
-ENV PATH="/usr/local/lib/vault-tools:$PATH"
-ENV PYTHONPATH="/usr/local/lib/vault-tools"
+ENV PATH="/usr/local/lib/brain-tools:$PATH"
+ENV PYTHONPATH="/usr/local/lib/brain-tools"
 
-WORKDIR /vault
+WORKDIR /brain
 CMD ["zsh"]

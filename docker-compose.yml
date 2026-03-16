@@ -1,9 +1,9 @@
 services:
-  vault:
+  brain:
     image: kitchencoder/second-brain:latest
-    container_name: vault
+    container_name: brain
     volumes:
-      - ${VAULT_HOST_PATH:-~/Documents/Vault33}:/vault
+      - ${BRAIN_HOST_PATH:-~/Documents/Vault33}:/brain
     env_file:
       - .env
     stdin_open: true
