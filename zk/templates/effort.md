@@ -1,13 +1,18 @@
 ---
-type: effort
-title: "{{title}}"
-created: {{format-date now "2006-01-02"}}
-tags: []
+type: moc
+title: "{{title}} — Index"
+scope: effort
 status: active
+created: {{format-date now "2006-01-02"}}
+tags: [effort]
 ---
 
 # {{title}}
 
 ## Goal
 
-## Log
+## Active Work
+
+## Notes
+
+## Related
