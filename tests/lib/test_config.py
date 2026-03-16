@@ -3,7 +3,13 @@ import pytest
 from lib.config import Config
 
 
-def test_defaults():
+def test_defaults(monkeypatch):
+    monkeypatch.delenv("EMBEDDING_BASE_URL", raising=False)
+    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("EMBEDDING_DIM", raising=False)
+    monkeypatch.delenv("CHAT_BASE_URL", raising=False)
+    monkeypatch.delenv("CHAT_MODEL", raising=False)
+    monkeypatch.delenv("VAULT_PATH", raising=False)
     cfg = Config()
     assert cfg.embedding_base_url == "http://model-runner.docker.internal/engines/llama.cpp/v1"
     assert cfg.embedding_model == "mxbai-embed-large"
