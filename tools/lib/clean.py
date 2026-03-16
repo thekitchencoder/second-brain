@@ -43,6 +43,7 @@ def _collapse_code_block(match: re.Match) -> str:
     return f"[code block: {lang}]" if lang else "[code block]"
 
 
+# Both separator rows and data rows are simplified — table structure is intentionally lost for embedding
 def _simplify_table_line(line: str) -> str:
     if _TABLE_SEPARATOR_RE.match(line.strip()):
         return ""
@@ -117,17 +118,9 @@ def chunk_text(text: str) -> list[str]:
         para_len = len(para)
         if current_len + para_len > _CHUNK_SIZE and current:
             chunks.append("\n\n".join(current))
-            # Keep last paragraph(s) for overlap
-            overlap = []
-            overlap_len = 0
-            for p in reversed(current):
-                if overlap_len + len(p) < _CHUNK_OVERLAP:
-                    overlap.insert(0, p)
-                    overlap_len += len(p)
-                else:
-                    break
-            current = overlap
-            current_len = overlap_len
+            # Carry the last paragraph forward as overlap
+            current = [current[-1]] if current else []
+            current_len = len(current[0]) if current else 0
         current.append(para)
         current_len += para_len
 
