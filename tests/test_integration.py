@@ -16,7 +16,7 @@ import os
 import pytest
 from pathlib import Path
 
-FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
+FIXTURE_BRAIN = Path(__file__).parent / "fixtures" / "vault"  # directory name kept as-is
 IMAGE = os.environ.get("SECOND_BRAIN_IMAGE", "kitchencoder/second-brain:latest")
 EMBEDDING_BASE_URL = os.environ.get(
     "EMBEDDING_BASE_URL",
@@ -26,17 +26,17 @@ EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "mxbai-embed-large")
 
 
 @pytest.fixture(scope="session")
-def vault_container():
-    """Start the vault container with fixture vault mounted, run vault-index, yield container."""
+def brain_container():
+    """Start the brain container with fixture brain mounted, run brain-index, yield container."""
     from testcontainers.core.container import DockerContainer
 
     container = (
         DockerContainer(IMAGE)
         .with_command("sleep infinity")
-        .with_volume_mapping(str(FIXTURE_VAULT.resolve()), "/vault", "rw")
+        .with_volume_mapping(str(FIXTURE_BRAIN.resolve()), "/brain", "rw")
         .with_env("EMBEDDING_BASE_URL", EMBEDDING_BASE_URL)
         .with_env("EMBEDDING_MODEL", EMBEDDING_MODEL)
-        .with_env("VAULT_PATH", "/vault")
+        .with_env("BRAIN_PATH", "/brain")
     )
 
     with container:
@@ -54,16 +54,16 @@ def vault_container():
             )
 
         # Run full index
-        exit_code, output = container.exec("vault-index run")
-        assert exit_code == 0, f"vault-index failed:\n{output.decode()}"
+        exit_code, output = container.exec("brain-index run")
+        assert exit_code == 0, f"brain-index failed:\n{output.decode()}"
 
         yield container
 
-    # Cleanup: remove the generated embeddings DB from the fixture vault
-    db = FIXTURE_VAULT / ".ai" / "embeddings.db"
+    # Cleanup: remove the generated embeddings DB from the fixture brain
+    db = FIXTURE_BRAIN / ".ai" / "embeddings.db"
     if db.exists():
         db.unlink()
-    ai_dir = FIXTURE_VAULT / ".ai"
+    ai_dir = FIXTURE_BRAIN / ".ai"
     if ai_dir.exists() and not any(ai_dir.iterdir()):
         ai_dir.rmdir()
 
@@ -76,15 +76,15 @@ def _exec(container, cmd: str) -> str:
 
 
 @pytest.mark.integration
-def test_search_returns_confabulation_note_with_frontmatter(vault_container):
-    """vault_search('co-dependent confabulation') returns the context note with full frontmatter."""
+def test_search_returns_confabulation_note_with_frontmatter(brain_container):
+    """brain_search('co-dependent confabulation') returns the context note with full frontmatter."""
     result = _exec(
-        vault_container,
+        brain_container,
         "python3 -c \""
-        "from vault_mcp_server import handle_vault_search; "
+        "from brain_mcp_server import handle_brain_search; "
         "from lib.config import Config; "
         "cfg = Config(); "
-        "print(handle_vault_search('co-dependent confabulation', 5, cfg.db_path))"
+        "print(handle_brain_search('co-dependent confabulation', 5, cfg.db_path))"
         "\""
     )
     assert "Co-dependent Confabulation" in result
@@ -94,13 +94,13 @@ def test_search_returns_confabulation_note_with_frontmatter(vault_container):
 
 
 @pytest.mark.integration
-def test_query_by_tag_returns_epistemic_lens_documents(vault_container):
-    """vault_query(tag='epistemic-lens') returns all documents tagged epistemic-lens."""
+def test_query_by_tag_returns_epistemic_lens_documents(brain_container):
+    """brain_query(tag='epistemic-lens') returns all documents tagged epistemic-lens."""
     result = _exec(
-        vault_container,
+        brain_container,
         "python3 -c \""
-        "from vault_mcp_server import handle_vault_query; "
-        "print(handle_vault_query(tag='epistemic-lens', status=None, type=None, vault_path='/vault'))"
+        "from brain_mcp_server import handle_brain_query; "
+        "print(handle_brain_query(tag='epistemic-lens', status=None, type=None, brain_path='/brain'))"
         "\""
     )
     assert "context-co-dependent-confabulation" in result
@@ -108,31 +108,30 @@ def test_query_by_tag_returns_epistemic_lens_documents(vault_container):
 
 
 @pytest.mark.integration
-def test_related_returns_distinct_files_not_repeated_chunks(vault_container):
-    """vault_related returns the cognitive debt summary and strange loops as distinct files."""
+def test_related_returns_distinct_files_not_repeated_chunks(brain_container):
+    """brain_related returns the cognitive debt summary and strange loops as distinct files."""
     result = _exec(
-        vault_container,
+        brain_container,
         "python3 -c \""
-        "from vault_mcp_server import handle_vault_related; "
+        "from brain_mcp_server import handle_brain_related; "
         "from lib.config import Config; "
         "cfg = Config(); "
-        "filepath = '/vault/Projects/confabulation/context-co-dependent-confabulation.md'; "
-        "print(handle_vault_related(filepath, 5, cfg.db_path, cfg.vault_path))"
+        "filepath = '/brain/Projects/confabulation/context-co-dependent-confabulation.md'; "
+        "print(handle_brain_related(filepath, 5, cfg.db_path, cfg.brain_path))"
         "\""
     )
-    # Each file should appear exactly once
     assert result.count("cognitive-debt-paper-summary") == 1
     assert result.count("strange-loops") == 1
 
 
 @pytest.mark.integration
-def test_templates_not_indexed(vault_container):
+def test_templates_not_indexed(brain_container):
     """Files under templates/ must not appear in the index."""
     result = _exec(
-        vault_container,
+        brain_container,
         "python3 -c \""
         "import sqlite3, sqlite_vec; "
-        "db = '/vault/.ai/embeddings.db'; "
+        "db = '/brain/.ai/embeddings.db'; "
         "conn = sqlite3.connect(db); "
         "conn.enable_load_extension(True); "
         "sqlite_vec.load(conn); "
