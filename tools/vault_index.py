@@ -8,6 +8,7 @@ import hashlib
 import os
 import sqlite3
 import sys
+from pathlib import Path
 
 from openai import OpenAI
 
@@ -45,29 +46,33 @@ def index_file(filepath: str, db_path: str) -> None:
     cleaned = clean_content(content)
     chunks = chunk_text(cleaned)
 
+    # Read existing hashes upfront, then close connection
     conn = sqlite3.connect(db_path)
     try:
-        for i, chunk in enumerate(chunks):
-            content_hash = hashlib.sha256(chunk.encode()).hexdigest()
-            existing = conn.execute(
-                "SELECT content_hash FROM chunks WHERE filepath=? AND chunk_index=?",
-                (filepath, i)
-            ).fetchone()
-            if existing and existing[0] == content_hash:
-                continue
-
-            embedding = get_embedding(chunk)
-            upsert_chunk(
-                db_path=db_path,
-                filepath=filepath,
-                chunk_index=i,
-                content=chunk,
-                content_hash=content_hash,
-                embedding=embedding,
-                meta=meta,
-            )
+        existing_hashes = {
+            row[0]: row[1]
+            for row in conn.execute(
+                "SELECT chunk_index, content_hash FROM chunks WHERE filepath=?",
+                (filepath,)
+            ).fetchall()
+        }
     finally:
         conn.close()
+
+    for i, chunk in enumerate(chunks):
+        content_hash = hashlib.sha256(chunk.encode()).hexdigest()
+        if existing_hashes.get(i) == content_hash:
+            continue
+        embedding = get_embedding(chunk)
+        upsert_chunk(
+            db_path=db_path,
+            filepath=filepath,
+            chunk_index=i,
+            content=chunk,
+            content_hash=content_hash,
+            embedding=embedding,
+            meta=meta,
+        )
 
 
 def index_vault(vault_path: str, db_path: str) -> None:
@@ -88,7 +93,7 @@ def watch_vault(vault_path: str, db_path: str) -> None:
     print(f"Watching {vault_path} for changes...", file=sys.stderr)
     for changes in watch(vault_path):
         for change_type, path in changes:
-            if path.endswith(".md") and "/.ai/" not in path:
+            if path.endswith(".md") and ".ai" not in Path(path).parts:
                 print(f"Reindexing {path}", file=sys.stderr)
                 index_file(path, db_path)
 
