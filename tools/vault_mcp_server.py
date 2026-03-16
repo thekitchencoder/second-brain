@@ -79,7 +79,12 @@ def handle_vault_query(
         cmd += ["--tag", tag]
     if status:
         cmd += ["--match", f"status:{status}"]
-    result = subprocess.run(cmd, cwd=vault_path, capture_output=True, text=True)
+    if type:
+        cmd += ["--match", f"type:{type}"]
+    try:
+        result = subprocess.run(cmd, cwd=vault_path, capture_output=True, text=True)
+    except FileNotFoundError:
+        return "zk is not installed or not on PATH. Is the container running?"
     if result.returncode != 0:
         return f"zk list failed: {result.stderr}"
     files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
@@ -89,10 +94,13 @@ def handle_vault_query(
 
 
 def handle_vault_create(template: str, title: str, vault_path: str) -> str:
-    result = subprocess.run(
-        ["zk", "new", "--template", template, "--title", title],
-        cwd=vault_path, capture_output=True, text=True
-    )
+    try:
+        result = subprocess.run(
+            ["zk", "new", "--template", template, "--title", title],
+            cwd=vault_path, capture_output=True, text=True
+        )
+    except FileNotFoundError:
+        return "zk is not installed or not on PATH. Is the container running?"
     if result.returncode != 0:
         return f"zk new failed: {result.stderr}"
     return result.stdout.strip()
