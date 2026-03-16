@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""brain-index: index second-brain notes into sqlite-vec for semantic search.
+
+Usage:
+  brain-index run    Full reindex of all markdown files
+  brain-index watch  Watch for changes and reindex incrementally
+"""
+from brain_index import main
+
+if __name__ == "__main__":
+    main()
