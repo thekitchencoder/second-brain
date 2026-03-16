@@ -103,6 +103,21 @@ def handle_brain_query(
     return "\n".join(files)
 
 
+def handle_brain_templates(brain_path: str) -> str:
+    """List available zk templates."""
+    templates_dir = os.path.join(brain_path, ".zk", "templates")
+    if not os.path.isdir(templates_dir):
+        return "No templates directory found. Has the brain been initialised with brain-init?"
+    names = sorted(
+        os.path.splitext(f)[0]
+        for f in os.listdir(templates_dir)
+        if f.endswith(".md")
+    )
+    if not names:
+        return "No templates found."
+    return "Available templates:\n" + "\n".join(f"  {n}" for n in names)
+
+
 def handle_brain_read(filepath: str, brain_path: str) -> str:
     """Read a file from the brain and return its full content."""
     full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
@@ -132,7 +147,8 @@ def handle_brain_create(template: str, title: str, brain_path: str) -> str:
     except FileNotFoundError:
         return "zk is not installed or not on PATH. Is the container running?"
     if result.returncode != 0:
-        return f"zk new failed: {result.stderr}"
+        available = handle_brain_templates(brain_path)
+        return f"zk new failed: {result.stderr.strip()}\n\n{available}"
     return result.stdout.strip()
 
 
@@ -198,6 +214,11 @@ def main():
                 },
             ),
             Tool(
+                name="brain_templates",
+                description="List available note templates. Call this before brain_create to know which template names are valid.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
                 name="brain_read",
                 description="Read the full content of a note by filepath. Use when you need the complete document after finding it via brain_search or brain_query.",
                 inputSchema={
@@ -241,6 +262,8 @@ def main():
                 db_path=db_path,
                 brain_path=brain_path,
             )
+        elif name == "brain_templates":
+            text = handle_brain_templates(brain_path=brain_path)
         elif name == "brain_read":
             text = handle_brain_read(
                 filepath=arguments["filepath"],

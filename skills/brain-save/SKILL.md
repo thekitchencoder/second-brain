@@ -12,7 +12,7 @@ Save something to the second-brain with correct frontmatter and placement.
 1. Run `brain_search` on the topic to check if a note already exists. If a match is found, call `brain_read(filepath)` to get the full content, then offer to update it rather than create a duplicate
 2. Use Glob to scan the top-level folder structure of the brain and infer where similar content lives — suggest a location based on existing patterns
 3. Agree the location with the user if ambiguous
-4. Create the note via `brain_create(template, title)`
+4. Call `brain_templates` to see what templates are available, then call `brain_create(template, title)` using an exact template name from that list
 5. Write frontmatter with exactly these fields:
 
 ```yaml
