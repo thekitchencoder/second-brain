@@ -157,13 +157,24 @@ def handle_brain_read(filepath: str, brain_path: str) -> str:
         return f"Error reading {filepath}: {e}"
 
 
-def handle_brain_create(template: str, title: str, brain_path: str) -> str:
+def handle_brain_create(template: str, title: str, brain_path: str, directory: Optional[str] = None) -> str:
     # zk requires the .md extension on template names
     if not template.endswith(".md"):
         template = template + ".md"
+    # Resolve target directory — default to brain root
+    if directory:
+        target_dir = directory if directory.startswith("/") else os.path.join(brain_path, directory)
+        # Security: ensure directory stays within the brain
+        brain_real = os.path.realpath(brain_path)
+        dir_real = os.path.realpath(os.path.abspath(target_dir))
+        if not (dir_real == brain_real or dir_real.startswith(brain_real + "/")):
+            return f"Error: directory is outside the brain: {directory}"
+        os.makedirs(target_dir, exist_ok=True)
+    else:
+        target_dir = brain_path
     try:
         result = subprocess.run(
-            ["zk", "new", "--template", template, "--title", title, "--print-path"],
+            ["zk", "new", "--working-dir", target_dir, "--template", template, "--title", title, "--print-path"],
             cwd=brain_path, capture_output=True, text=True
         )
     except FileNotFoundError:
@@ -213,12 +224,13 @@ def main():
             ),
             Tool(
                 name="brain_create",
-                description="Create a new note from a template.",
+                description="Create a new note from a template. Returns the filepath — then use brain_write to populate it. Use brain_query first to find the right directory.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "template": {"type": "string"},
+                        "template": {"type": "string", "description": "Template name from brain_templates"},
                         "title": {"type": "string"},
+                        "directory": {"type": "string", "description": "Optional subdirectory within the brain (e.g. 'Projects/my-project/context'). Created if it doesn't exist."},
                     },
                     "required": ["template", "title"],
                 },
@@ -288,6 +300,7 @@ def main():
                 template=arguments["template"],
                 title=arguments["title"],
                 brain_path=brain_path,
+                directory=arguments.get("directory"),
             )
         elif name == "brain_related":
             text = handle_brain_related(
