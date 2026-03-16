@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-
     && cd /tmp \
     && wget -q "https://github.com/asg017/sqlite-vec/releases/download/v${SQLITE_VEC_VERSION}/sqlite-vec-${SQLITE_VEC_VERSION}-amalgamation.tar.gz" \
     && tar xzf "sqlite-vec-${SQLITE_VEC_VERSION}-amalgamation.tar.gz" \
-    && pip install --no-cache-dir --no-binary sqlite-vec "sqlite-vec>=${SQLITE_VEC_VERSION}" \
+    && pip install --no-cache-dir "sqlite-vec>=${SQLITE_VEC_VERSION}" \
     && gcc -shared -fPIC -I/usr/include -o /usr/local/lib/python3.12/site-packages/sqlite_vec/vec0.so sqlite-vec.c -lm \
     && apt-get remove -y gcc libsqlite3-dev wget \
     && apt-get autoremove -y \
