@@ -103,6 +103,25 @@ def handle_brain_query(
     return "\n".join(files)
 
 
+def handle_brain_write(filepath: str, content: str, brain_path: str) -> str:
+    """Write content to a file inside the brain."""
+    full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
+    brain_real = os.path.realpath(brain_path)
+    try:
+        file_real = os.path.realpath(os.path.abspath(full_path))
+    except Exception:
+        return f"Invalid path: {filepath}"
+    if not (file_real == brain_real or file_real.startswith(brain_real + "/")):
+        return f"Error: path is outside the brain: {filepath}"
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    try:
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Written: {full_path}"
+    except Exception as e:
+        return f"Error writing {filepath}: {e}"
+
+
 def handle_brain_templates(brain_path: str) -> str:
     """List available zk templates."""
     templates_dir = os.path.join(brain_path, ".zk", "templates")
@@ -217,6 +236,18 @@ def main():
                 },
             ),
             Tool(
+                name="brain_write",
+                description="Write content to a note inside the brain. Use after brain_create to populate the note, or to update an existing note.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filepath": {"type": "string", "description": "Path as returned by brain_create or brain_search"},
+                        "content": {"type": "string", "description": "Full file content to write (overwrites existing content)"},
+                    },
+                    "required": ["filepath", "content"],
+                },
+            ),
+            Tool(
                 name="brain_templates",
                 description="List available note templates. Call this before brain_create to know which template names are valid.",
                 inputSchema={"type": "object", "properties": {}},
@@ -263,6 +294,12 @@ def main():
                 filepath=arguments["filepath"],
                 limit=arguments.get("limit", 5),
                 db_path=db_path,
+                brain_path=brain_path,
+            )
+        elif name == "brain_write":
+            text = handle_brain_write(
+                filepath=arguments["filepath"],
+                content=arguments["content"],
                 brain_path=brain_path,
             )
         elif name == "brain_templates":

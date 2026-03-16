@@ -42,7 +42,7 @@ tags: [<project-slug>]
 
 Body: current phase, active work items, wikilink to the context primer.
 
-5. Add wikilinks between the two notes.
+5. For each note: call `brain_write(filepath, content)` with the full file content — do NOT use any filesystem or desktop tool. Add wikilinks between the two notes in the content before writing.
 6. Report what was created and how to query the project later:
    ```
    brain_query(tag="<project-slug>")
