@@ -108,8 +108,8 @@ def index_vault(vault_path: str, db_path: str) -> None:
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)
     for root, dirs, files in os.walk(vault_path):
-        # Skip hidden directories (.obsidian, .zk, .ai, .git)
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        # Skip hidden directories (.obsidian, .zk, .ai, .git) and templates
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "templates"]
         for fname in files:
             if not fname.endswith(".md"):
                 continue
@@ -123,7 +123,7 @@ def watch_vault(vault_path: str, db_path: str) -> None:
     print(f"Watching {vault_path} for changes...", file=sys.stderr)
     for changes in watch(vault_path):
         for change_type, path in changes:
-            if path.endswith(".md") and ".ai" not in Path(path).parts:
+            if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts:
                 print(f"Reindexing {path}", file=sys.stderr)
                 index_file(path, db_path)
 

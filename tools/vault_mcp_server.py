@@ -66,9 +66,19 @@ def handle_vault_related(filepath: str, limit: int, db_path: str, vault_path: st
     if not vectors:
         return f"No embeddings found for {filepath}. Has it been indexed?"
     mean_vec = list(np.mean(vectors, axis=0))
-    candidates = search_chunks(db_path, mean_vec, limit=limit + 1)
-    filtered = [r for r in candidates if r["filepath"] != full_path and r["filepath"] != filepath]
-    return _format_results(filtered[:limit])
+    # Fetch many more candidates than needed so deduplication by file still yields `limit` results
+    candidates = search_chunks(db_path, mean_vec, limit=limit * 10)
+    seen = set()
+    deduped = []
+    for r in candidates:
+        fp = r["filepath"]
+        if fp in (full_path, filepath) or fp in seen:
+            continue
+        seen.add(fp)
+        deduped.append(r)
+        if len(deduped) == limit:
+            break
+    return _format_results(deduped)
 
 
 def handle_vault_query(
