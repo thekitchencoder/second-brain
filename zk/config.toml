@@ -1,0 +1,18 @@
+[notebook]
+dir = "/vault"
+
+[note]
+filename = "{{slug title}}"
+extension = "md"
+template = "default.md"
+id-charset = "alphanum"
+id-length = 0
+
+[extra]
+author = "Chris"
+
+[tool]
+fzf-preview = "bat --color=always --style=plain {path}"
+
+[filter]
+recents = "--sort created- --created-after '2 weeks ago'"
