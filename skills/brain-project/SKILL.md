@@ -12,11 +12,11 @@ Scaffold a new project in the second-brain with two seed documents.
 1. Ask for a project name if not provided. Derive a kebab-case slug (e.g. `my-project-name`).
 2. Use Glob to scan the brain structure — find where existing projects live and what documents they contain. Follow the established pattern.
 3. Run `brain_search` on the project topic to find any prior related work. For any relevant hit, call `brain_read(filepath)` to get the full content before drafting new notes.
-4. Create two notes via `brain_create`:
+4. Call `brain_templates` to see what templates are available. Then create two notes via `brain_create` using exact template names from that list:
 
 ### Note 1: Context Primer
 
-Template: `context-primer` (or the closest available template)
+Template: whichever template from `brain_templates` best matches a context/primer document (e.g. `default` if nothing more specific exists)
 
 ```yaml
 type: context-primer
@@ -30,7 +30,7 @@ Body: problem statement, goals, key decisions made so far, links to related prio
 
 ### Note 2: Project / Effort Note
 
-Template: `project` or `effort` (whichever the brain uses)
+Template: whichever template from `brain_templates` best matches a project/effort document
 
 ```yaml
 type: project
