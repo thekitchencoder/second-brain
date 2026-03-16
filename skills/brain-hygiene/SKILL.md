@@ -9,7 +9,7 @@ Systematic audit of the second-brain. Four checks in order. Fix what is unambigu
 
 ## Check 1: Frontmatter Completeness
 
-Use Glob to find all `.md` files excluding the `templates/` directory. Read each file. Flag any missing one or more of these required fields:
+Use `brain_query` (or `brain_search` broadly) to enumerate notes, then call `brain_read(filepath)` for each one to inspect its content. The brain runs inside Docker — use `brain_read`, not the filesystem Read tool. Flag any file missing one or more of these required fields:
 
 ```
 type, title, status, created, tags
@@ -21,7 +21,9 @@ type, title, status, created, tags
 
 ## Check 2: Orphaned Notes
 
-**Outbound orphans:** Use Grep to find `.md` files containing no `[[wikilinks]]`. These notes link to nothing.
+Use `brain_read` to read each file's content for wikilink scanning — Grep cannot reach inside the Docker container.
+
+**Outbound orphans:** Files containing no `[[wikilinks]]`. These notes link to nothing.
 
 **Inbound orphans:** Build a list of all filenames (without extension). Grep for `[[filename]]` patterns across all files. Notes with no inbound links are unreferenced.
 

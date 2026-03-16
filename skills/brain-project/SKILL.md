@@ -11,7 +11,7 @@ Scaffold a new project in the second-brain with two seed documents.
 
 1. Ask for a project name if not provided. Derive a kebab-case slug (e.g. `my-project-name`).
 2. Use Glob to scan the brain structure — find where existing projects live and what documents they contain. Follow the established pattern.
-3. Run `brain_search` on the project topic to find any prior related work.
+3. Run `brain_search` on the project topic to find any prior related work. For any relevant hit, call `brain_read(filepath)` to get the full content before drafting new notes.
 4. Create two notes via `brain_create`:
 
 ### Note 1: Context Primer
