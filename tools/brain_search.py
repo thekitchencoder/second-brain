@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vault-search: semantic search across the vault."""
+"""brain-search: semantic search across the brain."""
 import json
 import os
 import sys
@@ -55,7 +55,7 @@ def search(query: str, db_path: str, limit: int = 5) -> list[dict]:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Semantic search across vault")
+    parser = argparse.ArgumentParser(description="Semantic search across brain")
     parser.add_argument("query", help="Search query")
     parser.add_argument("--limit", type=int, default=5, help="Number of results")
     parser.add_argument("--json", action="store_true", help="Output as JSON")

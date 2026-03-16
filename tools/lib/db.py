@@ -42,7 +42,7 @@ def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
             f"but current model produces {embedding_dim}-dim embeddings.\n"
             f"To switch models, delete the index and reindex:\n"
             f"  rm {db_path}\n"
-            f"  vault-index run"
+            f"  brain-index run"
         )
 
     conn = _connect(db_path)

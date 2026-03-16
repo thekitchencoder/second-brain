@@ -14,8 +14,8 @@ class Config:
             "http://model-runner.docker.internal/engines/llama.cpp/v1"
         )
         self.chat_model = os.environ.get("CHAT_MODEL", "llama3.2")
-        self.vault_path = os.environ.get("VAULT_PATH", "/vault")
+        self.brain_path = os.environ.get("BRAIN_PATH", "/brain")
 
     @property
     def db_path(self):
-        return f"{self.vault_path}/.ai/embeddings.db"
+        return f"{self.brain_path}/.ai/embeddings.db"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vault-mcp-server: MCP server exposing vault tools to Claude Code."""
+"""brain-mcp-server: MCP server exposing brain tools to Claude Code."""
 import os
 import subprocess
 import sys
@@ -52,14 +52,14 @@ def _format_results(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def handle_vault_search(query: str, limit: int, db_path: str) -> str:
+def handle_brain_search(query: str, limit: int, db_path: str) -> str:
     embedding = get_embedding(query)
     results = search_chunks(db_path, embedding, limit=limit)
     return _format_results(results)
 
 
-def handle_vault_related(filepath: str, limit: int, db_path: str, vault_path: str) -> str:
-    full_path = filepath if filepath.startswith("/") else f"{vault_path}/{filepath}"
+def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: str) -> str:
+    full_path = filepath if filepath.startswith("/") else f"{brain_path}/{filepath}"
     vectors = get_chunk_embeddings(db_path, full_path)
     if not vectors:
         vectors = get_chunk_embeddings(db_path, filepath)
@@ -81,8 +81,8 @@ def handle_vault_related(filepath: str, limit: int, db_path: str, vault_path: st
     return _format_results(deduped)
 
 
-def handle_vault_query(
-    tag: Optional[str], status: Optional[str], type: Optional[str], vault_path: str
+def handle_brain_query(
+    tag: Optional[str], status: Optional[str], type: Optional[str], brain_path: str
 ) -> str:
     cmd = ["zk", "list", "--quiet", "--format", "{{path}}"]
     if tag:
@@ -92,7 +92,7 @@ def handle_vault_query(
     if type:
         cmd += ["--match", f"type:{type}"]
     try:
-        result = subprocess.run(cmd, cwd=vault_path, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=brain_path, capture_output=True, text=True)
     except FileNotFoundError:
         return "zk is not installed or not on PATH. Is the container running?"
     if result.returncode != 0:
@@ -103,11 +103,11 @@ def handle_vault_query(
     return "\n".join(files)
 
 
-def handle_vault_create(template: str, title: str, vault_path: str) -> str:
+def handle_brain_create(template: str, title: str, brain_path: str) -> str:
     try:
         result = subprocess.run(
             ["zk", "new", "--template", template, "--title", title],
-            cwd=vault_path, capture_output=True, text=True
+            cwd=brain_path, capture_output=True, text=True
         )
     except FileNotFoundError:
         return "zk is not installed or not on PATH. Is the container running?"
@@ -124,14 +124,14 @@ def main():
     from mcp.types import Tool, TextContent
     import asyncio
 
-    server = Server("vault")
+    server = Server("brain-mcp-server")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         return [
             Tool(
-                name="vault_search",
-                description="Semantic search across vault notes. Returns matched content with full frontmatter (type, status, created, tags) for provenance.",
+                name="brain_search",
+                description="Semantic search across brain notes. Returns matched content with full frontmatter (type, status, created, tags) for provenance.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -142,7 +142,7 @@ def main():
                 },
             ),
             Tool(
-                name="vault_query",
+                name="brain_query",
                 description="Structured metadata query using zk. Filter notes by tag, status, or type.",
                 inputSchema={
                     "type": "object",
@@ -154,7 +154,7 @@ def main():
                 },
             ),
             Tool(
-                name="vault_create",
+                name="brain_create",
                 description="Create a new note from a template.",
                 inputSchema={
                     "type": "object",
@@ -166,7 +166,7 @@ def main():
                 },
             ),
             Tool(
-                name="vault_related",
+                name="brain_related",
                 description="Find notes semantically related to a given file.",
                 inputSchema={
                     "type": "object",
@@ -182,33 +182,33 @@ def main():
     @server.call_tool()
     async def call_tool(name: str, arguments: dict):
         db_path = _cfg.db_path
-        vault_path = _cfg.vault_path
+        brain_path = _cfg.brain_path
 
-        if name == "vault_search":
-            text = handle_vault_search(
+        if name == "brain_search":
+            text = handle_brain_search(
                 query=arguments["query"],
                 limit=arguments.get("limit", 5),
                 db_path=db_path,
             )
-        elif name == "vault_query":
-            text = handle_vault_query(
+        elif name == "brain_query":
+            text = handle_brain_query(
                 tag=arguments.get("tag"),
                 status=arguments.get("status"),
                 type=arguments.get("type"),
-                vault_path=vault_path,
+                brain_path=brain_path,
             )
-        elif name == "vault_create":
-            text = handle_vault_create(
+        elif name == "brain_create":
+            text = handle_brain_create(
                 template=arguments["template"],
                 title=arguments["title"],
-                vault_path=vault_path,
+                brain_path=brain_path,
             )
-        elif name == "vault_related":
-            text = handle_vault_related(
+        elif name == "brain_related":
+            text = handle_brain_related(
                 filepath=arguments["filepath"],
                 limit=arguments.get("limit", 5),
                 db_path=db_path,
-                vault_path=vault_path,
+                brain_path=brain_path,
             )
         else:
             text = f"Unknown tool: {name}"

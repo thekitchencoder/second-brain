@@ -1,8 +1,8 @@
-"""vault-index: index vault notes into sqlite-vec for semantic search.
+"""brain-index: index brain notes into sqlite-vec for semantic search.
 
 Usage:
-  vault-index run    Full reindex of all markdown files
-  vault-index watch  Watch for changes and reindex incrementally
+  brain-index run    Full reindex of all markdown files
+  brain-index watch  Watch for changes and reindex incrementally
 """
 import hashlib
 import os
@@ -100,14 +100,14 @@ def detect_embedding_dim() -> int:
     return dim
 
 
-def index_vault(vault_path: str, db_path: str) -> None:
+def index_brain(brain_path: str, db_path: str) -> None:
     dim = detect_embedding_dim()
     try:
         init_db(db_path, embedding_dim=dim, model=_cfg.embedding_model)
     except ValueError as e:
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)
-    for root, dirs, files in os.walk(vault_path):
+    for root, dirs, files in os.walk(brain_path):
         # Skip hidden directories (.obsidian, .zk, .ai, .git) and templates
         dirs[:] = [d for d in dirs if not d.startswith(".") and d != "templates"]
         for fname in files:
@@ -118,10 +118,10 @@ def index_vault(vault_path: str, db_path: str) -> None:
             index_file(filepath, db_path)
 
 
-def watch_vault(vault_path: str, db_path: str) -> None:
+def watch_brain(brain_path: str, db_path: str) -> None:
     from watchfiles import watch
-    print(f"Watching {vault_path} for changes...", file=sys.stderr)
-    for changes in watch(vault_path):
+    print(f"Watching {brain_path} for changes...", file=sys.stderr)
+    for changes in watch(brain_path):
         for change_type, path in changes:
             if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts:
                 print(f"Reindexing {path}", file=sys.stderr)
@@ -130,17 +130,17 @@ def watch_vault(vault_path: str, db_path: str) -> None:
 
 def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    vault_path = _cfg.vault_path
+    brain_path = _cfg.brain_path
     db_path = _cfg.db_path
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     if cmd == "run":
-        index_vault(vault_path, db_path)
+        index_brain(brain_path, db_path)
         print("Indexing complete.", file=sys.stderr)
     elif cmd == "watch":
-        index_vault(vault_path, db_path)
-        watch_vault(vault_path, db_path)
+        index_brain(brain_path, db_path)
+        watch_brain(brain_path, db_path)
     else:
         print(f"Unknown command: {cmd}", file=sys.stderr)
         sys.exit(1)
