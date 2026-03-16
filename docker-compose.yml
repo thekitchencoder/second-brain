@@ -1,6 +1,6 @@
 services:
   vault:
-    build: .
+    image: kitchencoder/second-brain:latest
     container_name: vault
     volumes:
       - ${VAULT_HOST_PATH:-~/Documents/Vault33}:/vault
