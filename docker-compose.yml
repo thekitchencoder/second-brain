@@ -3,7 +3,7 @@ services:
     build: .
     container_name: vault
     volumes:
-      - ${VAULT_PATH:-~/Documents/MyVault}:/vault
+      - ${VAULT_HOST_PATH:-~/Documents/MyVault}:/vault
     env_file:
       - .env
     stdin_open: true
