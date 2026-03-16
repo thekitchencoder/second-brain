@@ -1,4 +1,5 @@
 FROM python:3.12-slim
+
 LABEL version="0.1.0"
 
 ARG ZK_VERSION=0.14.1
