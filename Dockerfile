@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-LABEL version="0.2.2"
+LABEL version="0.2.3"
 
 ARG ZK_VERSION=0.14.1
 
@@ -49,11 +49,16 @@ RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-search \
               /usr/local/lib/brain-tools/brain-mcp-server \
               /usr/local/lib/brain-tools/brain-init \
-              /usr/local/lib/brain-tools/brain-template-sync
+              /usr/local/lib/brain-tools/brain-template-sync \
+              /usr/local/lib/brain-tools/entrypoint.sh
+
+# Shell environment
+COPY tools/brain.zshrc /root/.zshrc
 
 # Add tools to PATH and Python path
 ENV PATH="/usr/local/lib/brain-tools:$PATH"
 ENV PYTHONPATH="/usr/local/lib/brain-tools"
 
 WORKDIR /brain
+ENTRYPOINT ["/usr/local/lib/brain-tools/entrypoint.sh"]
 CMD ["zsh"]

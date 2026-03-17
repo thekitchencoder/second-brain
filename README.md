@@ -50,16 +50,19 @@ After adding: `source ~/.zshrc`
 # List notes by tag
 zk list --tag "epistemic-lens"
 
-# List recent notes
-zk list $recents
+# List recent notes (alias: recent)
+recent
 
-# Full-text search with preview
-zk list --quiet --format '{{absPath}}' | fzf --preview 'bat --color=always {}'
+# Full-text search with preview (alias: preview)
+preview
 
-# Semantic search
-brain-search "co-dependent confabulation"
-brain-search "embedding models" --limit 10
+# Semantic search (alias: search)
+search "co-dependent confabulation"
+search "embedding models" --limit 10
 brain-search "query" --json
+
+# Watch the background indexer log
+watchlog
 ```
 
 ### Create notes
