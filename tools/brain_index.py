@@ -102,7 +102,10 @@ def index_brain(brain_path: str, db_path: str) -> None:
 def watch_brain(brain_path: str, db_path: str) -> None:
     from watchfiles import watch
     print(f"Watching {brain_path} for changes...", file=sys.stderr)
-    for changes in watch(brain_path):
+    # force_polling=True is required when /brain is a Docker volume mount from macOS.
+    # inotify events don't propagate through the volume into the container, so
+    # without polling the watcher runs but never fires.
+    for changes in watch(brain_path, force_polling=True):
         for change_type, path in changes:
             if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts:
                 if os.path.isfile(path):
