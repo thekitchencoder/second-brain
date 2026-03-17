@@ -143,7 +143,7 @@ The brain container must be running before starting Claude Desktop.
 | `brain_query(tag?, status?, type?)` | Structured metadata query via zk |
 | `brain_read(filepath)` | Read the full content of a note by filepath |
 | `brain_write(filepath, content)` | Write content to a note (use after `brain_create`) |
-| `brain_create(template, title)` | Create a note stub from a template, returns filepath |
+| `brain_create(template, title, directory?)` | Create a note stub from a template in an optional subdirectory, returns filepath |
 | `brain_templates()` | List available templates — call before `brain_create` |
 | `brain_related(filepath, limit?)` | Find semantically related notes |
 
@@ -175,8 +175,7 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 |---|---|---|
 | `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host |
 | `EMBEDDING_BASE_URL` | Docker Model Runner | OpenAI-compatible embedding endpoint |
-| `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name |
-| `EMBEDDING_DIM` | `1024` | Embedding vector dimension — must match model |
+| `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name — dimension auto-detected at index time |
 | `CHAT_BASE_URL` | Docker Model Runner | Chat completions endpoint |
 | `CHAT_MODEL` | `llama3.2` | Chat model name |
 | `OPENAI_API_KEY` | `local` | API key (any non-empty string for local endpoints) |

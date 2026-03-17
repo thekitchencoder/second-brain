@@ -2,34 +2,30 @@
 """brain-mcp-server: MCP server exposing brain tools to Claude Code."""
 import os
 import subprocess
-import sys
 from typing import Optional
 
 import numpy as np
-from openai import OpenAI
 
 from lib.config import Config
 from lib.db import get_chunk_embeddings, search_chunks
+from lib.embeddings import get_embedding
 
 _cfg = Config()
-_client = None
+
+_PREVIEW_LENGTH = 400      # chars of content shown per result in MCP responses
+_CANDIDATE_MULTIPLIER = 10  # how many raw candidates to fetch before deduping by file in brain_related
 
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(
-            base_url=_cfg.embedding_base_url,
-            api_key=os.environ.get("OPENAI_API_KEY", "local")
-        )
-    return _client
-
-
-def get_embedding(text: str) -> list[float]:
-    response = _get_client().embeddings.create(
-        input=text, model=_cfg.embedding_model
-    )
-    return response.data[0].embedding
+def _check_within_brain(path: str, brain_path: str, label: str = "path") -> Optional[str]:
+    """Return an error string if path is outside brain_path, else None."""
+    brain_real = os.path.realpath(brain_path)
+    try:
+        target_real = os.path.realpath(os.path.abspath(path))
+    except Exception:
+        return f"Invalid {label}: {path}"
+    if not (target_real == brain_real or target_real.startswith(brain_real + "/")):
+        return f"Error: {label} is outside the brain: {path}"
+    return None
 
 
 def _format_results(results: list[dict]) -> str:
@@ -44,7 +40,7 @@ def _format_results(results: list[dict]) -> str:
             f"- **Type:** {r.get('type', '-')}  **Status:** {r.get('status', '-')}",
             f"- **Created:** {r.get('created', '-')}  **Tags:** {tags or '-'}",
             "",
-            r.get("content", "")[:400].strip(),
+            r.get("content", "")[:_PREVIEW_LENGTH].strip(),
             "",
             "---",
             "",
@@ -66,8 +62,8 @@ def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: st
     if not vectors:
         return f"No embeddings found for {filepath}. Has it been indexed?"
     mean_vec = list(np.mean(vectors, axis=0))
-    # Fetch many more candidates than needed so deduplication by file still yields `limit` results
-    candidates = search_chunks(db_path, mean_vec, limit=limit * 10)
+    # Fetch more candidates than needed so deduplication by file still yields `limit` results
+    candidates = search_chunks(db_path, mean_vec, limit=limit * _CANDIDATE_MULTIPLIER)
     seen = set()
     deduped = []
     for r in candidates:
@@ -82,15 +78,15 @@ def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: st
 
 
 def handle_brain_query(
-    tag: Optional[str], status: Optional[str], type: Optional[str], brain_path: str
+    tag: Optional[str], status: Optional[str], note_type: Optional[str], brain_path: str
 ) -> str:
     cmd = ["zk", "list", "--quiet", "--format", "{{path}}"]
     if tag:
         cmd += ["--tag", tag]
     if status:
         cmd += ["--match", f"status:{status}"]
-    if type:
-        cmd += ["--match", f"type:{type}"]
+    if note_type:
+        cmd += ["--match", f"type:{note_type}"]
     try:
         result = subprocess.run(cmd, cwd=brain_path, capture_output=True, text=True)
     except FileNotFoundError:
@@ -106,13 +102,8 @@ def handle_brain_query(
 def handle_brain_write(filepath: str, content: str, brain_path: str) -> str:
     """Write content to a file inside the brain."""
     full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
-    brain_real = os.path.realpath(brain_path)
-    try:
-        file_real = os.path.realpath(os.path.abspath(full_path))
-    except Exception:
-        return f"Invalid path: {filepath}"
-    if not (file_real == brain_real or file_real.startswith(brain_real + "/")):
-        return f"Error: path is outside the brain: {filepath}"
+    if err := _check_within_brain(full_path, brain_path):
+        return err
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     try:
         with open(full_path, "w", encoding="utf-8") as f:
@@ -140,14 +131,8 @@ def handle_brain_templates(brain_path: str) -> str:
 def handle_brain_read(filepath: str, brain_path: str) -> str:
     """Read a file from the brain and return its full content."""
     full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
-    # Security: ensure path stays within the brain
-    brain_real = os.path.realpath(brain_path)
-    try:
-        file_real = os.path.realpath(full_path)
-    except Exception:
-        return f"Invalid path: {filepath}"
-    if not (file_real == brain_real or file_real.startswith(brain_real + "/")):
-        return f"Error: path is outside the brain: {filepath}"
+    if err := _check_within_brain(full_path, brain_path):
+        return err
     if not os.path.isfile(full_path):
         return f"File not found: {filepath}"
     try:
@@ -164,11 +149,8 @@ def handle_brain_create(template: str, title: str, brain_path: str, directory: O
     # Resolve target directory — default to brain root
     if directory:
         target_dir = directory if directory.startswith("/") else os.path.join(brain_path, directory)
-        # Security: ensure directory stays within the brain
-        brain_real = os.path.realpath(brain_path)
-        dir_real = os.path.realpath(os.path.abspath(target_dir))
-        if not (dir_real == brain_real or dir_real.startswith(brain_real + "/")):
-            return f"Error: directory is outside the brain: {directory}"
+        if err := _check_within_brain(target_dir, brain_path, label="directory"):
+            return err
         os.makedirs(target_dir, exist_ok=True)
     else:
         target_dir = brain_path
@@ -292,7 +274,7 @@ def main():
             text = handle_brain_query(
                 tag=arguments.get("tag"),
                 status=arguments.get("status"),
-                type=arguments.get("type"),
+                note_type=arguments.get("type"),
                 brain_path=brain_path,
             )
         elif name == "brain_create":
