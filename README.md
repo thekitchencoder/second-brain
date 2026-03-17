@@ -114,17 +114,22 @@ brain-template-sync zk-to-obsidian
 
 ### Claude Code
 
-Add to `.mcp.json` in your project root (or `~/.claude/mcp.json` for global):
+Register once across all your projects (user scope):
 
-```json
-{
-  "mcpServers": {
-    "brain": {
-      "command": "docker",
-      "args": ["exec", "-i", "brain", "brain-mcp-server"]
-    }
-  }
-}
+```bash
+claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server
+```
+
+Or for a single project only (adds `.mcp.json` to the project root):
+
+```bash
+claude mcp add --scope project brain -- docker exec -i brain brain-mcp-server
+```
+
+Verify it's registered:
+
+```bash
+claude mcp list
 ```
 
 ### Claude Desktop
