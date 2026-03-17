@@ -140,8 +140,12 @@ def watch_brain(brain_path: str, db_path: str) -> None:
     for changes in watch(brain_path):
         for change_type, path in changes:
             if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts:
-                print(f"Reindexing {path}", file=sys.stderr)
-                index_file(path, db_path)
+                if os.path.isfile(path):
+                    print(f"Reindexing {path}", file=sys.stderr)
+                    index_file(path, db_path)
+                else:
+                    print(f"Purging deleted/renamed: {path}", file=sys.stderr)
+                    purge_stale_paths(db_path)
 
 
 def main() -> None:
