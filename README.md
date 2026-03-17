@@ -158,9 +158,12 @@ The brain container must be running before starting Claude Desktop.
 
 ## Skills
 
-Pre-built Claude Code skills are included in the `skills/` directory.
+There are two sets of skills:
 
-### Claude Code
+- **`skills/`** — installed into `~/.claude/skills/` (or Claude Desktop). These use the MCP server and work from any project directory.
+- **`brain-skills/`** — installed into `$BRAIN_HOST_PATH/.claude/skills/`. These load only when Claude Code is opened at the vault root. They use MCP for semantic search and direct filesystem tools for file I/O.
+
+### Claude Code — global skills (`skills/`)
 
 Copy (one-off):
 ```bash
@@ -171,6 +174,30 @@ Or symlink so skills stay in sync with the repo:
 ```bash
 for d in skills/brain-*/; do ln -sf "$PWD/$d" ~/.claude/skills/; done
 ```
+
+### Claude Code — vault-level skills (`brain-skills/`)
+
+These load automatically when Claude Code is opened inside the vault.
+
+Copy (one-off):
+```bash
+cp -r brain-skills/brain-* $BRAIN_HOST_PATH/.claude/skills/
+```
+
+Or symlink:
+```bash
+for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/skills/"; done
+```
+
+| Skill | Trigger | What it does |
+|---|---|---|
+| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks + index |
+| `brain-connect` | "Find connections for this note" | Surfaces related notes, offers to patch wikilinks |
+| `brain-triage` | "Process my inbox" | Works through `status: raw` notes one at a time — promote, archive, or defer |
+| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
+| `brain-daily` | "Start my day" | Creates today's daily note, carries forward open items, shows inbox count |
+| `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort, flags orphans and missing stubs |
+| `brain-extract` | "Pull the ideas out of this note" | Extracts atomic ideas from a long note into separate Cards with wikilinks back |
 
 ### Claude Desktop
 
