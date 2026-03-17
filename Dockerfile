@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-LABEL version="0.2.4"
+LABEL version="0.2.5"
 
 ARG ZK_VERSION=0.14.1
 
