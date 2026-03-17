@@ -1,34 +1,12 @@
 #!/usr/bin/env python3
 """brain-search: semantic search across the brain."""
 import json
-import os
-import sys
-
-from openai import OpenAI
 
 from lib.config import Config
 from lib.db import search_chunks
+from lib.embeddings import get_embedding
 
 _cfg = Config()
-_client = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(
-            base_url=_cfg.embedding_base_url,
-            api_key=os.environ.get("OPENAI_API_KEY", "local")
-        )
-    return _client
-
-
-def get_embedding(text: str) -> list[float]:
-    response = _get_client().embeddings.create(
-        input=text,
-        model=_cfg.embedding_model,
-    )
-    return response.data[0].embedding
 
 
 def format_result(result: dict) -> str:
