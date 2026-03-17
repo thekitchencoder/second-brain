@@ -22,6 +22,8 @@ docker exec -it brain zsh
 # Initialise a brain (first time only)
 brain-init
 
+# First-time vault structure setup — paste prompts/setup.md into a Claude session
+
 # Index for semantic search
 brain-index run
 ```
