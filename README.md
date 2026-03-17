@@ -5,9 +5,13 @@ Docker container for brain management: zk, semantic search, and MCP server for C
 ## Quick start
 
 ```bash
-# Copy and configure
+# Set your vault path in the shell — required before docker compose up
+export BRAIN_HOST_PATH=~/Documents/brain   # edit to match your vault location
+# Add this to ~/.zshrc or ~/.bashrc to persist across sessions
+
+# Copy and configure container environment
 cp .env.example .env
-# Edit BRAIN_HOST_PATH in .env to point at your notes directory
+# Edit .env for EMBEDDING_MODEL, CHAT_MODEL, etc. if needed
 
 # Start (pulls image from Docker Hub)
 docker compose up -d
