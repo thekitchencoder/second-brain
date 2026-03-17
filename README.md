@@ -156,8 +156,14 @@ Pre-built Claude Code skills are included in the `skills/` directory.
 
 ### Claude Code
 
+Copy (one-off):
 ```bash
 cp -r skills/brain-* ~/.claude/skills/
+```
+
+Or symlink so skills stay in sync with the repo:
+```bash
+for d in skills/brain-*/; do ln -sf "$PWD/$d" ~/.claude/skills/; done
 ```
 
 ### Claude Desktop
