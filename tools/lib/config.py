@@ -8,7 +8,6 @@ class Config:
             "http://model-runner.docker.internal/engines/llama.cpp/v1"
         )
         self.embedding_model = os.environ.get("EMBEDDING_MODEL", "mxbai-embed-large")
-        self.embedding_dim = int(os.environ.get("EMBEDDING_DIM", "1024"))
         self.chat_base_url = os.environ.get(
             "CHAT_BASE_URL",
             "http://model-runner.docker.internal/engines/llama.cpp/v1"
