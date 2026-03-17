@@ -54,7 +54,7 @@ zk list --tag "epistemic-lens"
 zk list $recents
 
 # Full-text search with preview
-zk list | fzf --preview 'bat --color=always {}'
+zk list --quiet --format '{{absPath}}' | fzf --preview 'bat --color=always {}'
 
 # Semantic search
 brain-search "co-dependent confabulation"
