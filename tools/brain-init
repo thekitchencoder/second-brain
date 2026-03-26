@@ -3,6 +3,7 @@
 
 Copies .zk config and templates into the brain directory.
 Creates .ai directory for embeddings.
+Copies .vscode workspace config for wiki-link navigation.
 Idempotent — safe to run multiple times.
 """
 import os
@@ -15,6 +16,10 @@ _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 _ZK_SOURCE_CANDIDATES = [
     os.path.join(_REPO_ROOT, "zk"),            # local dev
     "/usr/local/lib/brain-tools/zk",           # inside container
+]
+_VSCODE_SOURCE_CANDIDATES = [
+    os.path.join(_REPO_ROOT, "vscode"),        # local dev
+    "/usr/local/lib/brain-tools/vscode",       # inside container
 ]
 
 
@@ -35,6 +40,16 @@ def init_brain(brain_path: str) -> None:
 
     os.makedirs(ai_dest, exist_ok=True)
     print(f"Ensured {ai_dest} exists")
+
+    vscode_source = next((p for p in _VSCODE_SOURCE_CANDIDATES if os.path.isdir(p)), None)
+    if vscode_source is not None:
+        vscode_dest = os.path.join(brain_path, ".vscode")
+        if os.path.isdir(vscode_dest):
+            print(f".vscode already exists at {vscode_dest}, skipping.")
+        else:
+            shutil.copytree(vscode_source, vscode_dest)
+            print(f"Created {vscode_dest}")
+
     print("Brain initialised.")
 
 
