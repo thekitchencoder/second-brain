@@ -52,7 +52,7 @@ After adding: `source ~/.zshrc`
 
 Open your brain vault folder in VS Code to get wiki-link navigation and markdown preview.
 
-**Setup:** VS Code will prompt to install recommended extensions (Foam, Markdown All in One, Paste Image) — accept the prompt or run `Extensions: Show Recommended Extensions` from the command palette.
+`brain-init` creates a `.vscode/` directory in the vault with recommended extensions and settings. VS Code will prompt to install them (Foam, Markdown All in One, Paste Image) — accept the prompt or run `Extensions: Show Recommended Extensions` from the command palette.
 
 **Usage:**
 - **Follow wiki-links:** Ctrl+click (Cmd+click on Mac) any `[[wiki-link]]` to navigate to that note
@@ -273,8 +273,11 @@ your-brain/
 │       ├── effort.md
 │       ├── meeting.md
 │       └── daily.md
-└── .ai/
-    └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
+├── .ai/
+│   └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
+└── .vscode/              ← VS Code workspace config (created by brain-init)
+    ├── extensions.json
+    └── settings.json
 ```
 
-Both `.zk/` and `.ai/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine.
+`.zk/`, `.ai/`, and `.vscode/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine.
