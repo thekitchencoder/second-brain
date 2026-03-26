@@ -49,9 +49,12 @@ COPY vscode/ /usr/local/lib/brain-tools/vscode/
 RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-search \
               /usr/local/lib/brain-tools/brain-mcp-server \
+              /usr/local/lib/brain-tools/brain-api \
               /usr/local/lib/brain-tools/brain-init \
               /usr/local/lib/brain-tools/brain-template-sync \
               /usr/local/lib/brain-tools/entrypoint.sh
+
+EXPOSE 7779
 
 # Shell environment
 COPY tools/brain.zshrc /root/.zshrc
