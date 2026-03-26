@@ -45,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-
 # Brain tools
 COPY tools/ /usr/local/lib/brain-tools/
 COPY zk/ /usr/local/lib/brain-tools/zk/
+COPY vscode/ /usr/local/lib/brain-tools/vscode/
 RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-search \
               /usr/local/lib/brain-tools/brain-mcp-server \
