@@ -48,6 +48,20 @@ alias bwatch='docker exec -d brain brain-index watch'
 
 After adding: `source ~/.zshrc`
 
+## VS Code
+
+Open your brain vault folder in VS Code to get wiki-link navigation and markdown preview.
+
+**Setup:** VS Code will prompt to install recommended extensions (Foam, Markdown All in One, Paste Image) — accept the prompt or run `Extensions: Show Recommended Extensions` from the command palette.
+
+**Usage:**
+- **Follow wiki-links:** Ctrl+click (Cmd+click on Mac) any `[[wiki-link]]` to navigate to that note
+- **Backlinks:** Open the Foam panel in the sidebar to see which notes link to the current note
+- **Graph view:** Run `Foam: Show Graph` from the command palette to visualise connections
+- **Daily notes:** Run `Foam: Open Daily Note` — configured to create in `Calendar/`
+
+Foam coexists with Obsidian — it uses `.vscode/` configuration, not `.obsidian/`.
+
 ## Inside the container
 
 ### Browse and search
