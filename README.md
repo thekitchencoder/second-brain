@@ -48,6 +48,20 @@ alias bwatch='docker exec -d brain brain-index watch'
 
 After adding: `source ~/.zshrc`
 
+## VS Code
+
+Open your brain vault folder in VS Code to get wiki-link navigation and markdown preview.
+
+`brain-init` creates a `.vscode/` directory in the vault with recommended extensions and settings. VS Code will prompt to install them (Foam, Markdown All in One, Paste Image) — accept the prompt or run `Extensions: Show Recommended Extensions` from the command palette.
+
+**Usage:**
+- **Follow wiki-links:** Ctrl+click (Cmd+click on Mac) any `[[wiki-link]]` to navigate to that note
+- **Backlinks:** Open the Foam panel in the sidebar to see which notes link to the current note
+- **Graph view:** Run `Foam: Show Graph` from the command palette to visualise connections
+- **Daily notes:** Run `Foam: Open Daily Note` — configured to create in `Calendar/`
+
+Foam coexists with Obsidian — it uses `.vscode/` configuration, not `.obsidian/`.
+
 ## Inside the container
 
 ### Browse and search
@@ -259,8 +273,11 @@ your-brain/
 │       ├── effort.md
 │       ├── meeting.md
 │       └── daily.md
-└── .ai/
-    └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
+├── .ai/
+│   └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
+└── .vscode/              ← VS Code workspace config (created by brain-init)
+    ├── extensions.json
+    └── settings.json
 ```
 
-Both `.zk/` and `.ai/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine.
+`.zk/`, `.ai/`, and `.vscode/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine.
