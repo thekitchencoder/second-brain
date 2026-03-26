@@ -1,0 +1,7 @@
+{
+  "foam.edit.linkReferenceDefinitions": "off",
+  "foam.openDailyNote.directory": "Calendar",
+  "foam.files.newNotePath": "currentDir",
+
+  "markdown.validate.enabled": false
+}
