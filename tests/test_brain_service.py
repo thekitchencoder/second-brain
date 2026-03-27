@@ -21,6 +21,7 @@ from lib.brain import (
     extract_wikilinks,
     find_backlinks,
     handle_brain_backlinks,
+    handle_brain_create,
     handle_brain_edit,
     handle_brain_query,
     handle_brain_read,
@@ -286,3 +287,20 @@ def test_handle_brain_search_returns_error_on_embedding_failure(tmp_path):
     with patch("lib.embeddings.get_embedding", side_effect=EmbeddingError("model not found")):
         result = handle_brain_search("test query", 5, ":memory:")
     assert "error" in result.lower() or "embedding" in result.lower()
+
+
+# ── brain_create template validation ─────────────────────────────────
+
+
+def test_brain_create_rejects_path_traversal_template(tmp_path):
+    result = handle_brain_create("../../../etc/passwd", "Test", str(tmp_path))
+    assert "invalid" in result.lower() or "template" in result.lower()
+
+def test_brain_create_rejects_template_with_slash(tmp_path):
+    result = handle_brain_create("subdir/template", "Test", str(tmp_path))
+    assert "invalid" in result.lower() or "template" in result.lower()
+
+def test_brain_create_accepts_valid_template(tmp_path):
+    # Valid name — should not fail on input validation (may fail on zk not found)
+    result = handle_brain_create("effort", "My Project", str(tmp_path))
+    assert "invalid" not in result.lower() or "zk" in result.lower()
