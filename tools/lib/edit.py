@@ -37,7 +37,7 @@ def _find_section(text: str, heading: str) -> Optional[tuple[int, int, int]]:
         return None
     level = len(m.group(1))  # number of # chars
     heading_start = m.start()
-    body_start = m.end() + 1  # skip the newline after the heading
+    body_start = min(m.end() + 1, len(text))  # skip the newline after the heading
 
     # Find next heading at same or higher level
     next_heading = re.compile(rf"^#{{1,{level}}}\s", re.MULTILINE)
@@ -65,7 +65,10 @@ def replace_section(text: str, heading: str, new_body: str) -> tuple[str, bool]:
     if not loc:
         return text, False
     _, body_start, body_end = loc
-    new_text = text[:body_start] + new_body.rstrip("\n") + "\n\n" + text[body_end:].lstrip("\n")
+    prefix = text[:body_start]
+    if prefix and not prefix.endswith("\n"):
+        prefix += "\n"
+    new_text = prefix + new_body.rstrip("\n") + "\n\n" + text[body_end:].lstrip("\n")
     return new_text, True
 
 

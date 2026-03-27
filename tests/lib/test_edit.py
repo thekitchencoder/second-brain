@@ -201,3 +201,14 @@ def test_insert_wikilink_to_section():
     ref_pos = result.index("# References")
     link_pos = result.index("[[new-ref]]")
     assert link_pos > ref_pos
+
+
+def test_replace_section_heading_at_eof_no_trailing_newline():
+    """Section at end of file with no trailing newline must not silently truncate."""
+    text = "# Overview\n\nSome content.\n\n# Final"  # no trailing newline after # Final
+    result, found = replace_section(text, "Final", "New content.")
+    assert found
+    assert "New content." in result
+    assert "Some content." in result  # prior section preserved
+    # Heading must be on its own line, not smashed into the body
+    assert "# Final\n" in result
