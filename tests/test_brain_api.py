@@ -318,6 +318,39 @@ def test_create_note_traversal_template_returns_400(client):
     assert "Invalid template name" in resp.json()["detail"]
 
 
+# ── Trash / Restore ──────────────────────────────────────────────────
+
+
+def test_trash_note(client, sample_note, brain_env):
+    brain_dir, _ = brain_env
+    with patch("lib.brain.delete_file_chunks"):
+        resp = client.post(f"/api/notes/{sample_note}/trash")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "Trashed" in data["detail"]
+    assert not (brain_dir / sample_note).exists()
+
+
+def test_trash_nonexistent_returns_404(client):
+    with patch("lib.brain.delete_file_chunks"):
+        resp = client.post("/api/notes/nonexistent.md/trash")
+    assert resp.status_code == 404
+
+
+def test_restore_note(client, sample_note, brain_env):
+    brain_dir, _ = brain_env
+    with patch("lib.brain.delete_file_chunks"):
+        client.post(f"/api/notes/{sample_note}/trash")
+    trash_path = f".trash/{sample_note}"
+    resp = client.post(f"/api/notes/{trash_path}/restore")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "Restored" in data["detail"]
+    assert (brain_dir / sample_note).exists()
+
+
 # ── Search ──────────────────────────────────────────────────────────
 
 
