@@ -203,6 +203,10 @@ def handle_brain_templates(brain_path: str) -> str:
 def handle_brain_create(
     template: str, title: str, brain_path: str, directory: Optional[str] = None
 ) -> str:
+    # Validate template is a bare filename — no path separators or traversal
+    bare = template[:-3] if template.endswith(".md") else template
+    if "/" in bare or "\\" in bare or ".." in bare:
+        return "Invalid template name: must be a bare filename with no path separators"
     if not template.endswith(".md"):
         template = template + ".md"
     if directory:
