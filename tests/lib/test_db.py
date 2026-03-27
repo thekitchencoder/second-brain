@@ -2,7 +2,7 @@
 import json
 import sqlite3
 import pytest
-from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings
+from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings, delete_file_chunks
 
 
 @pytest.fixture
@@ -100,3 +100,47 @@ def test_init_db_stores_embedding_dim_in_meta(db_path):
 def test_init_db_rejects_bool_dim(db_path):
     with pytest.raises(ValueError, match="positive integer"):
         init_db(db_path, embedding_dim=True)
+
+
+def test_delete_file_chunks_removes_chunks_and_embeddings(db_path):
+    init_db(db_path, embedding_dim=4)
+    meta = {"title": "X", "type": "note", "status": "draft",
+            "created": "2026-03-27", "tags": [], "scope": None}
+    upsert_chunk(db_path, "Cards/foo.md", 0, "chunk 0", "h0", [0.1, 0.2, 0.3, 0.4], meta)
+    upsert_chunk(db_path, "Cards/foo.md", 1, "chunk 1", "h1", [0.2, 0.3, 0.4, 0.5], meta)
+
+    delete_file_chunks(db_path, "Cards/foo.md")
+
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    chunk_rows = conn.execute(
+        "SELECT COUNT(*) FROM chunks WHERE filepath='Cards/foo.md'"
+    ).fetchone()[0]
+    conn.close()
+    assert chunk_rows == 0
+
+    from lib.db import _connect
+    vec_conn = _connect(db_path)
+    try:
+        emb_rows = vec_conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+    finally:
+        vec_conn.close()
+    assert emb_rows == 0
+
+
+def test_delete_file_chunks_does_not_affect_other_filepaths(db_path):
+    init_db(db_path, embedding_dim=4)
+    meta = {"title": "X", "type": "note", "status": "draft",
+            "created": "2026-03-27", "tags": [], "scope": None}
+    upsert_chunk(db_path, "Cards/foo.md", 0, "chunk foo", "hf", [0.1, 0.2, 0.3, 0.4], meta)
+    upsert_chunk(db_path, "Cards/bar.md", 0, "chunk bar", "hb", [0.5, 0.6, 0.7, 0.8], meta)
+
+    delete_file_chunks(db_path, "Cards/foo.md")
+
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    bar_rows = conn.execute(
+        "SELECT COUNT(*) FROM chunks WHERE filepath='Cards/bar.md'"
+    ).fetchone()[0]
+    conn.close()
+    assert bar_rows == 1
