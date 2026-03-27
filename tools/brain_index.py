@@ -15,7 +15,14 @@ from lib.config import Config
 from lib.db import init_db, upsert_chunk
 from lib.embeddings import get_embedding, EmbeddingError
 
-_cfg = Config()
+_cfg = None
+
+
+def _get_cfg() -> "Config":
+    global _cfg
+    if _cfg is None:
+        _cfg = Config()
+    return _cfg
 
 
 def index_file(filepath: str, db_path: str) -> None:
@@ -79,7 +86,7 @@ def index_file(filepath: str, db_path: str) -> None:
 
 def detect_embedding_dim() -> int:
     """Call the embedding API once to get the actual output dimension."""
-    print(f"Detecting embedding dimension for {_cfg.embedding_model}...", file=sys.stderr)
+    print(f"Detecting embedding dimension for {_get_cfg().embedding_model}...", file=sys.stderr)
     try:
         vec = get_embedding("dimension probe")
     except EmbeddingError as e:
@@ -120,7 +127,7 @@ def purge_stale_paths(db_path: str) -> None:
 def index_brain(brain_path: str, db_path: str) -> None:
     dim = detect_embedding_dim()
     try:
-        init_db(db_path, embedding_dim=dim, model=_cfg.embedding_model)
+        init_db(db_path, embedding_dim=dim, model=_get_cfg().embedding_model)
     except ValueError as e:
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)
@@ -155,8 +162,8 @@ def watch_brain(brain_path: str, db_path: str) -> None:
 
 def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    brain_path = _cfg.brain_path
-    db_path = _cfg.db_path
+    brain_path = _get_cfg().brain_path
+    db_path = _get_cfg().db_path
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 

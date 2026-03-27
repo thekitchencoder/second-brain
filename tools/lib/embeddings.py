@@ -5,7 +5,7 @@ from openai import OpenAI, APIConnectionError, InternalServerError, NotFoundErro
 
 from lib.config import Config
 
-_cfg = Config()
+_cfg = None
 _client = None
 
 
@@ -14,11 +14,18 @@ class EmbeddingError(RuntimeError):
     pass
 
 
+def _get_cfg() -> "Config":
+    global _cfg
+    if _cfg is None:
+        _cfg = Config()
+    return _cfg
+
+
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
         _client = OpenAI(
-            base_url=_cfg.embedding_base_url,
+            base_url=_get_cfg().embedding_base_url,
             api_key=os.environ.get("OPENAI_API_KEY", "local"),
         )
     return _client
@@ -29,7 +36,7 @@ def get_embedding(text: str, max_chars: int = 1500) -> list[float]:
     try:
         response = _get_client().embeddings.create(
             input=text[:max_chars],
-            model=_cfg.embedding_model,
+            model=_get_cfg().embedding_model,
         )
         return response.data[0].embedding
     except InternalServerError as e:
@@ -39,11 +46,11 @@ def get_embedding(text: str, max_chars: int = 1500) -> list[float]:
         raise
     except NotFoundError:
         raise EmbeddingError(
-            f"Embedding model '{_cfg.embedding_model}' not found at {_cfg.embedding_base_url}. "
+            f"Embedding model '{_get_cfg().embedding_model}' not found at {_get_cfg().embedding_base_url}. "
             f"Check that the model is loaded and EMBEDDING_MODEL is set correctly."
         )
     except APIConnectionError:
         raise EmbeddingError(
-            f"Cannot connect to embedding endpoint {_cfg.embedding_base_url}. "
+            f"Cannot connect to embedding endpoint {_get_cfg().embedding_base_url}. "
             f"Is Docker Model Runner (or your configured LLM server) running?"
         )
