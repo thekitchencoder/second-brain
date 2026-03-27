@@ -92,4 +92,4 @@ USER root
 
 WORKDIR /brain
 ENTRYPOINT ["/usr/local/lib/brain-tools/entrypoint.sh"]
-CMD ["--auth", "none", "/brain"]
+CMD ["--bind-addr", "0.0.0.0:8080", "--user-data-dir", "/home/coder/.local/share/code-server", "--auth", "none", "/brain"]
