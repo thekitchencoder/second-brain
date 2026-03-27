@@ -24,6 +24,14 @@ from lib.edit import (
 _PREVIEW_LENGTH = 400       # chars of content shown per result
 _CANDIDATE_MULTIPLIER = 10  # raw candidates before deduping by file
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+_SAFE_PARAM_RE = re.compile(r'^[a-zA-Z0-9\-_]+$')
+
+
+def _validate_query_param(name: str, value: str) -> Optional[str]:
+    """Return an error string if value contains unsafe characters, else None."""
+    if not _SAFE_PARAM_RE.match(value):
+        return f"Invalid {name}: must contain only letters, digits, hyphens and underscores"
+    return None
 
 
 def _check_within_brain(path: str, brain_path: str, label: str = "path") -> Optional[str]:
@@ -109,6 +117,10 @@ def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: st
 def handle_brain_query(
     tag: Optional[str], status: Optional[str], note_type: Optional[str], brain_path: str
 ) -> str:
+    for name, value in [("tag", tag), ("status", status), ("type", note_type)]:
+        if value is not None:
+            if err := _validate_query_param(name, value):
+                return err
     cmd = ["zk", "list", "--quiet", "--format", "{{path}}"]
     if tag:
         cmd += ["--tag", tag]
