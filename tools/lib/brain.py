@@ -118,7 +118,7 @@ def handle_brain_query(
     tag: Optional[str], status: Optional[str], note_type: Optional[str], brain_path: str
 ) -> str:
     for name, value in [("tag", tag), ("status", status), ("type", note_type)]:
-        if value is not None:
+        if value:
             if err := _validate_query_param(name, value):
                 return err
     cmd = ["zk", "list", "--quiet", "--format", "{{path}}"]
