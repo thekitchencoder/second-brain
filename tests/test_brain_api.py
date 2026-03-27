@@ -7,9 +7,11 @@ import textwrap
 import pytest
 from unittest.mock import patch, MagicMock
 
-# Stub out sqlite_vec before anything imports lib.db
+# Stub out native-only deps before anything imports them
 if "sqlite_vec" not in sys.modules:
     sys.modules["sqlite_vec"] = MagicMock()
+if "openai" not in sys.modules:
+    sys.modules["openai"] = MagicMock()
 
 from fastapi.testclient import TestClient
 
