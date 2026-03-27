@@ -2,8 +2,10 @@ FROM codercom/code-server:latest
 
 USER root
 
-# Install Claude Code CLI (requires Node.js — already present in codercom base)
-RUN npm install -g @anthropic-ai/claude-code
+# Install Node.js and npm, then Claude Code CLI
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @anthropic-ai/claude-code
 
 USER coder
 
