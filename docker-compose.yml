@@ -8,7 +8,6 @@ services:
       # docker compose — it is not reliably read from .env across all platforms.
       # Set it explicitly: export BRAIN_HOST_PATH=~/Documents/brain
       - ${BRAIN_HOST_PATH}:/brain
-      - ${HOME}/.claude:/home/coder/.claude
       - code-server-data:/home/coder/.local/share/code-server
       - zsh-data:/home/coder/.zsh-data
     env_file:

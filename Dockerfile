@@ -88,13 +88,14 @@ ENV HISTFILE="/home/coder/.zsh-data/history"
 
 EXPOSE 7779 8080
 
-# Pre-trust /brain so Claude Code never prompts for folder trust
-# Written as root before switching to coder; host ~/.claude.json is NOT mounted
-# (host processes write it concurrently, causing JSON parse errors).
-# Credentials go in .env — see .env.example.
+# Pre-bake Claude Code config — fully self-contained, no host mounts.
+# .claude.json  — pre-trusts /brain (no interactive prompt)
+# .claude/settings.json — sets default model for Docker Model Runner
 RUN echo '{"projects":{"/brain":{"allowedTools":[],"hasTrustDialogAccepted":true}}}' \
     > /home/coder/.claude.json \
-    && chown coder:coder /home/coder/.claude.json
+    && mkdir -p /home/coder/.claude \
+    && echo '{"model":"gpt-oss:32k"}' > /home/coder/.claude/settings.json \
+    && chown -R coder:coder /home/coder/.claude.json /home/coder/.claude
 
 # VS Code extensions — must run as coder user
 USER coder
