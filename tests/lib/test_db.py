@@ -75,3 +75,24 @@ def test_get_chunk_embeddings_returns_vectors(db_path):
     vectors = get_chunk_embeddings(db_path, "notes/x.md")
     assert len(vectors) == 2
     assert len(vectors[0]) == 4
+
+
+def test_init_db_rejects_non_positive_dim(db_path):
+    with pytest.raises(ValueError, match="positive integer"):
+        init_db(db_path, embedding_dim=0)
+
+
+def test_init_db_rejects_negative_dim(db_path):
+    with pytest.raises(ValueError, match="positive integer"):
+        init_db(db_path, embedding_dim=-1)
+
+
+def test_init_db_meta_row_uses_param_not_fstring(db_path):
+    """meta INSERT should go through parameterised execute, not executescript."""
+    init_db(db_path, embedding_dim=4)
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT value FROM meta WHERE key='embedding_dim'").fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == "4"

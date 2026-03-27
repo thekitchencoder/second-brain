@@ -35,6 +35,9 @@ def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
     Raises ValueError if the DB already exists with a different embedding dimension —
     delete the DB file and reindex to switch models.
     """
+    if not isinstance(embedding_dim, int) or embedding_dim <= 0:
+        raise ValueError(f"embedding_dim must be a positive integer, got {embedding_dim!r}")
+
     stored_dim = get_stored_dim(db_path)
     if stored_dim is not None and stored_dim != embedding_dim:
         raise ValueError(
@@ -69,8 +72,10 @@ def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT
             );
-            INSERT OR IGNORE INTO meta VALUES ('embedding_dim', '{embedding_dim}');
         """)
+        conn.execute(
+            "INSERT OR IGNORE INTO meta VALUES (?, ?)", ("embedding_dim", str(embedding_dim))
+        )
         if model:
             conn.execute(
                 "INSERT OR REPLACE INTO meta VALUES ('embedding_model', ?)", (model,)
