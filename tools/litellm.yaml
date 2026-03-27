@@ -1,0 +1,28 @@
+# LiteLLM proxy config — translates Claude Code's Anthropic API calls to
+# Docker Model Runner's OpenAI-compatible endpoint.
+#
+# CHAT_MODEL and CHAT_BASE_URL come from .env (same model used by the brain).
+# OPENAI_API_KEY is set to "local" in .env.
+#
+# Claude Code picks the model based on task complexity; all names route to the
+# same local model since Docker Model Runner only has one.
+
+model_list:
+  - model_name: claude-opus-4-5
+    litellm_params:
+      model: openai/{{CHAT_MODEL}}
+      api_base: "{{CHAT_BASE_URL}}"
+      api_key: "{{OPENAI_API_KEY}}"
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      model: openai/{{CHAT_MODEL}}
+      api_base: "{{CHAT_BASE_URL}}"
+      api_key: "{{OPENAI_API_KEY}}"
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: openai/{{CHAT_MODEL}}
+      api_base: "{{CHAT_BASE_URL}}"
+      api_key: "{{OPENAI_API_KEY}}"
+
+litellm_settings:
+  drop_params: true
