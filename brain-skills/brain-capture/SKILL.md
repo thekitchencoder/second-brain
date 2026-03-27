@@ -56,7 +56,7 @@ Do not proceed until the user signals they are done editing.
 After the user confirms done:
 
 1. Run `brain_search(title)` and `brain_related(filepath)` in parallel
-2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related")` — idempotent, safe to call without pre-checking
+2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related Notes")` — idempotent, safe to call without pre-checking
 3. If the note has a non-empty `effort:` field value: `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
 4. Report: "Linked to 3 notes, added reference to `Efforts/jobs-guarantee.md`"
 

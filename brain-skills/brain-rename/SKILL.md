@@ -46,6 +46,8 @@ Report files updated as you go.
 
 ### 5. Rename the file
 
+Use the host filesystem path (strip the `/brain` prefix from any MCP path):
+
 ```bash
 mv <old-path> <new-path>
 ```
