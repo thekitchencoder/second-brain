@@ -329,11 +329,15 @@ def test_trash_moves_file_to_trash_dir(brain_with_note):
 
 
 def test_trash_cleans_db(brain_with_note):
+    db_path = str(brain_with_note / ".ai" / "embeddings.db")
+    os.makedirs(str(brain_with_note / ".ai"), exist_ok=True)
+    open(db_path, "w").close()  # create empty file so os.path.exists passes
+    expected_full_path = str(brain_with_note / "Cards" / "foo.md")
     with patch("lib.brain.delete_file_chunks") as mock_del:
         handle_brain_trash(
-            "Cards/foo.md", str(brain_with_note), db_path="/tmp/test.db"
+            "Cards/foo.md", str(brain_with_note), db_path=db_path
         )
-    mock_del.assert_called_once()
+    mock_del.assert_called_once_with(db_path, expected_full_path)
 
 
 def test_trash_returns_backlink_info(brain_with_note):

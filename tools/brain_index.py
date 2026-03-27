@@ -132,7 +132,7 @@ def index_brain(brain_path: str, db_path: str) -> None:
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)
     for root, dirs, files in os.walk(brain_path):
-        # Skip hidden directories (.obsidian, .zk, .ai, .git) and templates
+        # Skip hidden directories (.obsidian, .zk, .ai, .git, .trash) and templates
         dirs[:] = [d for d in dirs if not d.startswith(".") and d != "templates"]
         for fname in files:
             if not fname.endswith(".md"):

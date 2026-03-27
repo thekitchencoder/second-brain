@@ -361,10 +361,8 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         with open(origin_sidecar, "w", encoding="utf-8") as f:
             f.write(rel)
 
-    try:
+    if os.path.exists(db_path):
         delete_file_chunks(db_path, full_path)
-    except Exception:
-        pass  # DB may not exist yet — don't fail the trash
     trash_rel = _relative_path(dest_path, brain_path)
 
     if backlinks:
@@ -384,6 +382,8 @@ def handle_brain_restore(trash_path: str, brain_path: str) -> str:
     normalized = trash_path.lstrip("/")
     if not normalized.startswith(".trash/"):
         return "Error: trash_path must start with '.trash/' (e.g. '.trash/Cards/foo.md')"
+    if not normalized.endswith(".md"):
+        return f"Error: only .md files can be restored, got: {trash_path}"
 
     full_trash_path = _resolve_path(normalized, brain_path)
     if err := _check_within_brain(full_trash_path, brain_path):
@@ -401,6 +401,8 @@ def handle_brain_restore(trash_path: str, brain_path: str) -> str:
     if original_rel.startswith("..") or original_rel.startswith("/"):
         return f"Error: original path in sidecar is invalid: {original_rel}"
     dest_path = os.path.join(brain_path, original_rel)
+    if err := _check_within_brain(dest_path, brain_path):
+        return f"Error: restore destination is outside the brain: {err}"
     if os.path.exists(dest_path):
         return (
             f"Error: {original_rel} already exists at the destination. "
