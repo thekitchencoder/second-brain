@@ -28,5 +28,13 @@ if [ -d /brain ]; then
         BRAIN_MCP_TRANSPORT=http brain-mcp-server >> /brain/.ai/mcp-http.log 2>&1 &
     fi
 fi
+# When using Docker Model Runner, write a Claude Code settings.json that sets
+# the default model — so the user can just run "claude" without --model.
+# Only written if ANTHROPIC_BASE_URL points at model-runner and the file is absent.
+if [ "${ANTHROPIC_BASE_URL:-}" = "http://model-runner.docker.internal:12434" ] \
+   && [ ! -f /home/coder/.claude/settings.json ]; then
+    mkdir -p /home/coder/.claude
+    printf '{"model":"gpt-oss:32k"}\n' > /home/coder/.claude/settings.json
+fi
 # Hand off to code-server's entrypoint (passes "$@" = "--auth none /brain")
 exec /usr/bin/entrypoint.sh "$@"
