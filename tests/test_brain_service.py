@@ -22,6 +22,7 @@ from lib.brain import (
     find_backlinks,
     handle_brain_backlinks,
     handle_brain_edit,
+    handle_brain_query,
     handle_brain_read,
     handle_brain_write,
 )
@@ -229,3 +230,24 @@ def test_backlinks_skips_hidden_dirs(tmp_path):
 
     backlinks = find_backlinks(str(target), str(tmp_path))
     assert len(backlinks) == 0
+
+
+# ── brain_query input validation ─────────────────────────────────────
+
+
+def test_brain_query_rejects_invalid_tag(tmp_path):
+    result = handle_brain_query(tag="foo; bar", status=None, note_type=None, brain_path=str(tmp_path))
+    assert "invalid" in result.lower()
+
+def test_brain_query_rejects_invalid_status(tmp_path):
+    result = handle_brain_query(tag=None, status="draft\ninjected", note_type=None, brain_path=str(tmp_path))
+    assert "invalid" in result.lower()
+
+def test_brain_query_rejects_invalid_type(tmp_path):
+    result = handle_brain_query(tag=None, status=None, note_type="../etc/passwd", brain_path=str(tmp_path))
+    assert "invalid" in result.lower()
+
+def test_brain_query_accepts_valid_params(tmp_path):
+    # Should not fail on input validation (may fail on zk not found — that's fine)
+    result = handle_brain_query(tag="my-effort", status="draft", note_type="discovery", brain_path=str(tmp_path))
+    assert "invalid" not in result.lower()
