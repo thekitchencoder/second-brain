@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import patch
 from brain_index import index_brain, index_file
 from lib.db import init_db, upsert_chunk
+from lib.embeddings import EmbeddingError
 
 
 @pytest.fixture
@@ -127,6 +128,15 @@ def test_index_file_prunes_excess_chunks_when_file_shrinks(brain, mock_embed):
     finally:
         vec_conn.close()
     assert emb_rows == 1, f"expected 1 embedding row after shrink, got {emb_rows}"
+
+
+def test_detect_embedding_dim_exits_on_embedding_error(brain, monkeypatch):
+    """detect_embedding_dim must call sys.exit(1) on EmbeddingError, not propagate it."""
+    monkeypatch.setattr("brain_index.get_embedding", lambda t: (_ for _ in ()).throw(EmbeddingError("no model")))
+    with pytest.raises(SystemExit) as exc_info:
+        from brain_index import detect_embedding_dim
+        detect_embedding_dim()
+    assert exc_info.value.code == 1
 
 
 def test_purge_stale_paths_also_deletes_embeddings(brain, mock_embed):

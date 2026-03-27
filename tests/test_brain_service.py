@@ -5,7 +5,7 @@ import sys
 import textwrap
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Stub native-only deps
 if "sqlite_vec" not in sys.modules:
@@ -24,8 +24,10 @@ from lib.brain import (
     handle_brain_edit,
     handle_brain_query,
     handle_brain_read,
+    handle_brain_search,
     handle_brain_write,
 )
+from lib.embeddings import EmbeddingError
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -251,3 +253,13 @@ def test_brain_query_accepts_valid_params(tmp_path):
     # Should not fail on input validation (may fail on zk not found — that's fine)
     result = handle_brain_query(tag="my-effort", status="draft", note_type="discovery", brain_path=str(tmp_path))
     assert "invalid" not in result.lower()
+
+
+# ── EmbeddingError handling ───────────────────────────────────────────
+
+
+def test_handle_brain_search_returns_error_on_embedding_failure(tmp_path):
+    """handle_brain_search must not propagate EmbeddingError — return error string."""
+    with patch("lib.embeddings.get_embedding", side_effect=EmbeddingError("model not found")):
+        result = handle_brain_search("test query", 5, ":memory:")
+    assert "error" in result.lower() or "embedding" in result.lower()

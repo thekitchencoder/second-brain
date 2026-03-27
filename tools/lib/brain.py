@@ -82,10 +82,13 @@ def _relative_path(full_path: str, brain_path: str) -> str:
 
 
 def handle_brain_search(query: str, limit: int, db_path: str) -> str:
-    from lib.db import search_chunks
-    from lib.embeddings import get_embedding
+    from lib.embeddings import get_embedding, EmbeddingError
 
-    embedding = get_embedding(query)
+    try:
+        embedding = get_embedding(query)
+    except EmbeddingError as e:
+        return f"Error: embedding service unavailable — {e}"
+    from lib.db import search_chunks
     results = search_chunks(db_path, embedding, limit=limit)
     return _format_results(results)
 
