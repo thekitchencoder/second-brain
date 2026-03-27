@@ -9,7 +9,7 @@ services:
       # Set it explicitly: export BRAIN_HOST_PATH=~/Documents/brain
       - ${BRAIN_HOST_PATH}:/brain
       - ${HOME}/.claude:/home/coder/.claude
-      - ${HOME}/.claude.json:/home/coder/.claude.json:ro
+      - ${HOME}/.claude.json:/home/coder/.claude.json
       - code-server-data:/home/coder/.local/share/code-server
       - zsh-data:/home/coder/.zsh-data
     env_file:
