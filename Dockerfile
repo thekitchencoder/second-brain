@@ -89,14 +89,13 @@ ENV HISTFILE="/home/coder/.zsh-data/history"
 EXPOSE 7779 8080
 
 # Pre-bake Claude Code config — fully self-contained, no host mounts.
-# .claude.json  — pre-trusts /brain (no interactive prompt)
-# .claude/settings.json — sets default model for Docker Model Runner
+# .claude.json        — pre-trusts /brain (no interactive prompt)
+# .claude/settings.json — disables telemetry/auth traffic, sets effort level
 RUN echo '{"projects":{"/brain":{"allowedTools":[],"hasTrustDialogAccepted":true}}}' \
     > /home/coder/.claude.json \
     && mkdir -p /home/coder/.claude \
-    && printf '{"model":"qwen3-coder:latest","hasCompletedOnboarding":true,"primaryApiKey":"local","env":{"ANTHROPIC_API_KEY":"sk-no-key-required","CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1","CLAUDE_CODE_ENABLE_TELEMETRY":"0","CLAUDE_CODE_ATTRIBUTION_HEADER":"0"}}\n' \
-       > /home/coder/.claude/settings.json \
     && chown -R coder:coder /home/coder/.claude.json /home/coder/.claude
+COPY --chown=coder:coder claude/settings.json /home/coder/.claude/settings.json
 
 # VS Code extensions — must run as coder user
 USER coder
