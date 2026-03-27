@@ -72,10 +72,14 @@ def _resolve_path(filepath: str, brain_path: str) -> str:
 
 
 def _relative_path(full_path: str, brain_path: str) -> str:
-    """Return path relative to *brain_path*."""
-    if full_path.startswith(brain_path):
-        return full_path[len(brain_path):].lstrip("/")
-    return full_path
+    """Return path relative to *brain_path*, or the original path if outside."""
+    try:
+        rel = os.path.relpath(full_path, brain_path)
+    except ValueError:
+        return full_path  # Windows: different drives
+    if rel.startswith(".."):
+        return full_path  # outside brain_path — return unchanged
+    return rel
 
 
 # ── Handlers ─────────────────────────────────────────────────────────
