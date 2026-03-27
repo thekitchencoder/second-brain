@@ -141,16 +141,19 @@ def test_detect_embedding_dim_exits_on_embedding_error(brain, monkeypatch):
 
 def test_watch_filter_excludes_trash_paths(brain, mock_embed):
     """Files under .trash/ must not be processed by the watcher."""
-    from pathlib import Path
+    import sys
+    from types import ModuleType
     from brain_index import watch_brain
 
-    db_path = str(brain / ".ai" / "embeddings.db")
-    init_db(db_path, embedding_dim=1024)
+    db_path = ":memory:"
 
     trash_path = str(brain / ".trash" / "Cards" / "deleted-note.md")
     fake_changes = [{(None, trash_path)}]
 
-    with patch("watchfiles.watch", return_value=iter(fake_changes)):
+    # Stub watchfiles so this test runs without the package installed
+    fake_watchfiles = ModuleType("watchfiles")
+    fake_watchfiles.watch = lambda *a, **kw: iter(fake_changes)
+    with patch.dict(sys.modules, {"watchfiles": fake_watchfiles}):
         with patch("brain_index.index_file") as mock_index, \
              patch("brain_index.purge_stale_paths") as mock_purge:
             watch_brain(str(brain), db_path)
