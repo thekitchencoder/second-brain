@@ -16,6 +16,13 @@
   },
   "markdown.preview.breaks": true,
   "foam.links.hover.enable": true,
+  "foam.files.ignore": [
+    "**/.zk/**",
+    "**/zk/**",
+    "**/.ai/**",
+    "**/.trash/**",
+    "**/.git/**"
+  ],
   "editor.fontFamily": "ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace",
   "editor.fontSize": 14,
   "workbench.colorTheme": "Default Dark Modern",
