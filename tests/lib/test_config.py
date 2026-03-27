@@ -1,4 +1,5 @@
 import os
+import importlib
 import pytest
 from lib.config import Config
 
@@ -23,3 +24,19 @@ def test_overrides_from_env(monkeypatch):
     assert cfg.embedding_base_url == "http://localhost:11434/v1"
     assert cfg.embedding_model == "nomic-embed-text"
     assert cfg.brain_path == "/tmp/testbrain"
+
+
+def test_config_cors_defaults_to_localhost(monkeypatch):
+    monkeypatch.delenv("BRAIN_API_CORS_ORIGINS", raising=False)
+    import lib.config
+    importlib.reload(lib.config)
+    cfg = lib.config.Config()
+    assert cfg.cors_origins == ["http://localhost:7779", "http://127.0.0.1:7779"]
+
+
+def test_config_cors_from_env(monkeypatch):
+    monkeypatch.setenv("BRAIN_API_CORS_ORIGINS", "http://localhost:3000,http://localhost:8080")
+    import lib.config
+    importlib.reload(lib.config)
+    cfg = lib.config.Config()
+    assert cfg.cors_origins == ["http://localhost:3000", "http://localhost:8080"]
