@@ -5,11 +5,13 @@ Handler functions and helpers used by both the MCP server and the REST API.
 import os
 import re
 import subprocess
+from datetime import datetime
 from typing import Optional
 
 import numpy as np
 
 from lib.config import Config
+from lib.db import delete_file_chunks
 from lib.clean import extract_frontmatter
 from lib.edit import (
     append_to_section,
@@ -327,6 +329,93 @@ def handle_brain_backlinks(filepath: str, brain_path: str) -> str:
         return "No backlinks found."
     lines = [f"- **{r['title']}** ({r['filepath']})" for r in results]
     return f"Backlinks to {rel}:\n" + "\n".join(lines)
+
+
+def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
+    """Move a note to .trash/, clean from DB, report orphaned backlinks."""
+    full_path = _resolve_path(filepath, brain_path)
+    if err := _check_within_brain(full_path, brain_path):
+        return err
+    if not full_path.endswith(".md"):
+        return f"Error: only .md files can be trashed, got: {filepath}"
+    if not os.path.isfile(full_path):
+        return f"Error: file not found: {filepath}"
+
+    rel = _relative_path(full_path, brain_path)
+    trash_root = os.path.join(brain_path, ".trash")
+    dest_path = os.path.join(trash_root, rel)
+    origin_sidecar: Optional[str] = None
+
+    if os.path.exists(dest_path):
+        stem, ext = os.path.splitext(os.path.basename(dest_path))
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        suffixed_name = f"{stem}.{stamp}{ext}"
+        dest_path = os.path.join(os.path.dirname(dest_path), suffixed_name)
+        origin_sidecar = os.path.splitext(dest_path)[0] + ".origin"
+
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    os.rename(full_path, dest_path)
+
+    if origin_sidecar:
+        with open(origin_sidecar, "w", encoding="utf-8") as f:
+            f.write(rel)
+
+    try:
+        delete_file_chunks(db_path, full_path)
+    except Exception:
+        pass  # DB may not exist yet — don't fail the trash
+
+    backlinks = find_backlinks(full_path, brain_path)
+    trash_rel = _relative_path(dest_path, brain_path)
+
+    if backlinks:
+        bl_paths = ", ".join(b["filepath"] for b in backlinks)
+        bl_msg = f"{len(backlinks)} backlink(s) now orphaned: {bl_paths}."
+    else:
+        bl_msg = "No backlinks."
+
+    return (
+        f"Trashed {rel}. {bl_msg} "
+        f"Restore with brain_restore('{trash_rel}')."
+    )
+
+
+def handle_brain_restore(trash_path: str, brain_path: str) -> str:
+    """Restore a note from .trash/ back to its original location."""
+    normalized = trash_path.lstrip("/")
+    if not normalized.startswith(".trash/"):
+        return "Error: trash_path must start with '.trash/' (e.g. '.trash/Cards/foo.md')"
+
+    full_trash_path = _resolve_path(normalized, brain_path)
+    if err := _check_within_brain(full_trash_path, brain_path):
+        return err
+    if not os.path.isfile(full_trash_path):
+        return f"Error: file not found in trash: {trash_path}"
+
+    origin_sidecar = os.path.splitext(full_trash_path)[0] + ".origin"
+    if os.path.isfile(origin_sidecar):
+        with open(origin_sidecar, "r", encoding="utf-8") as f:
+            original_rel = f.read().strip()
+    else:
+        original_rel = normalized[len(".trash/"):]
+
+    dest_path = os.path.join(brain_path, original_rel)
+    if os.path.exists(dest_path):
+        return (
+            f"Error: {original_rel} already exists at the destination. "
+            f"Resolve the conflict before restoring."
+        )
+
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    os.rename(full_trash_path, dest_path)
+
+    if os.path.isfile(origin_sidecar):
+        os.remove(origin_sidecar)
+
+    return (
+        f"Restored {original_rel}. "
+        f"The file watcher will re-index it shortly."
+    )
 
 
 def extract_wikilinks(text: str) -> list[dict]:
