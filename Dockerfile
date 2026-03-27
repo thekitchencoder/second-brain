@@ -94,7 +94,8 @@ EXPOSE 7779 8080
 RUN echo '{"projects":{"/brain":{"allowedTools":[],"hasTrustDialogAccepted":true}}}' \
     > /home/coder/.claude.json \
     && mkdir -p /home/coder/.claude \
-    && echo '{"model":"qwen3-coder:latest"}' > /home/coder/.claude/settings.json \
+    && printf '{"model":"qwen3-coder:latest","hasCompletedOnboarding":true,"primaryApiKey":"local","env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1","CLAUDE_CODE_ENABLE_TELEMETRY":"0","CLAUDE_CODE_ATTRIBUTION_HEADER":"0"}}\n' \
+       > /home/coder/.claude/settings.json \
     && chown -R coder:coder /home/coder/.claude.json /home/coder/.claude
 
 # VS Code extensions — must run as coder user
