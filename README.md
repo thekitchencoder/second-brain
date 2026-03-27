@@ -126,10 +126,48 @@ brain-template-sync zk-to-obsidian
 
 ## MCP server
 
-The brain exposes an MCP server with two transports:
+The brain exposes an MCP server with two transports that can run **simultaneously**:
 
-- **stdio** (default) — for local clients like Claude Code and Claude Desktop
-- **HTTP** — Streamable HTTP on port 7780 for network clients like Open WebUI and LM Studio
+- **stdio** — for Claude Code and Claude Desktop (always available via `docker exec`)
+- **HTTP** — Streamable HTTP on port 7780 for Open WebUI, LM Studio, and other network clients
+
+Both transports share the same tools and handler logic. When you set `BRAIN_MCP_TRANSPORT=http`, the entrypoint starts the HTTP server as a background process alongside the indexer and REST API. The stdio transport remains available via `docker exec` — it starts a fresh process per invocation, not a persistent daemon.
+
+### Recommended setup: docker compose with HTTP enabled
+
+This gives every client access from a single `docker compose up -d`:
+
+**1. Add to `.env`:**
+
+```bash
+BRAIN_MCP_TRANSPORT=http
+```
+
+**2. Expose the MCP HTTP port in `docker-compose.yml`:**
+
+```yaml
+services:
+  brain:
+    ports:
+      - "${BRAIN_API_PORT:-7779}:7779"   # REST API
+      - "7780:7780"                       # MCP HTTP
+```
+
+**3. Start the container:**
+
+```bash
+docker compose up -d
+```
+
+Now configure each client:
+
+| Client | Transport | How it connects |
+|---|---|---|
+| Claude Code | stdio | `docker exec -i brain brain-mcp-server` |
+| Claude Desktop | stdio | `docker exec -i brain brain-mcp-server` |
+| Open WebUI | HTTP | `http://<host>:7780/mcp` |
+| LM Studio | HTTP | `http://localhost:7780/mcp` |
+| Docker MCP Toolkit | either | Gateway manages its own container |
 
 ### Claude Code
 
@@ -151,6 +189,8 @@ Verify it's registered:
 claude mcp list
 ```
 
+Claude Code launches `docker exec` each time it needs the MCP server. This uses stdio transport regardless of `BRAIN_MCP_TRANSPORT` — the env var only controls the persistent HTTP daemon.
+
 ### Claude Desktop
 
 Add to your Claude Desktop config file:
@@ -170,11 +210,52 @@ Add to your Claude Desktop config file:
 }
 ```
 
-The brain container must be running before starting Claude Desktop.
+The brain container must be running before starting Claude Desktop. Like Claude Code, this uses stdio via `docker exec`.
+
+### Open WebUI
+
+Open WebUI connects over HTTP. With the recommended setup above (HTTP enabled, port 7780 exposed):
+
+**Configure in Open WebUI:** Admin Panel → Settings → Tools → MCP Servers:
+
+- **URL:** `http://host.docker.internal:7780/mcp` (Open WebUI running on the host or in Docker for Mac/Windows)
+- **URL:** `http://brain:7780/mcp` (Open WebUI and brain on the same Docker network)
+
+**If Open WebUI and brain are in separate compose files**, create a shared network so they can reach each other by service name:
+
+```bash
+docker network create brain-net
+```
+
+Add to both compose files:
+
+```yaml
+services:
+  brain:   # or open-webui
+    networks:
+      - brain-net
+
+networks:
+  brain-net:
+    external: true
+```
+
+Then use `http://brain:7780/mcp` as the URL in Open WebUI.
+
+### LM Studio
+
+LM Studio runs on the host and connects to the brain's HTTP transport.
+
+With the recommended setup above (HTTP enabled, port 7780 exposed), add an MCP server in LM Studio:
+
+- **URL:** `http://localhost:7780/mcp`
+- **Transport:** Streamable HTTP
+
+LM Studio requires a model that supports tool/function calling (e.g. Qwen 2.5, Llama 3.x, Mistral). The model must be loaded with tool use enabled for the brain tools to appear.
 
 ### Docker MCP Toolkit (Docker Desktop 4.48+)
 
-Docker Desktop's MCP Toolkit provides a centralised gateway that exposes MCP servers to all your AI clients at once. Instead of configuring each client separately, you configure the gateway once.
+The Docker MCP Toolkit is an alternative to docker compose. It provides a centralised gateway that launches its own container from the brain image and exposes it to all AI clients at once. Use this if you only need the MCP server (no indexer or REST API).
 
 **1. Enable the MCP Toolkit:**
 
@@ -221,75 +302,19 @@ docker mcp profile config brain --set brain-mcp.brain_path=$BRAIN_HOST_PATH
 # stdio mode — for Claude Desktop / Claude Code
 docker mcp gateway run --profile brain
 
-# SSE mode — for Open WebUI / LM Studio / remote clients
+# Streaming mode — for Open WebUI / LM Studio / remote clients
 docker mcp gateway run --profile brain --transport streaming --port 8811
 ```
 
 For Claude Desktop, the easiest path is Docker Desktop → MCP Toolkit → MCP Clients → click "Connect" next to Claude Desktop.
 
-> **Note:** The Docker MCP gateway launches its own containers from images — it does not connect to your existing `docker compose` services. If you need the full stack (indexer + REST API + MCP server), use docker compose with HTTP transport instead (see below).
-
-### Open WebUI
-
-Open WebUI connects to the MCP server over HTTP. Enable HTTP transport in docker compose and point Open WebUI at the `/mcp` endpoint.
-
-**1. Add HTTP transport to your compose config.** In `.env`:
-
-```bash
-BRAIN_MCP_TRANSPORT=http
-```
-
-Or add the environment variable and port directly in `docker-compose.yml`:
-
-```yaml
-services:
-  brain:
-    environment:
-      - BRAIN_MCP_TRANSPORT=http
-    ports:
-      - "${BRAIN_API_PORT:-7779}:7779"
-      - "7780:7780"   # MCP HTTP
-```
-
-**2. Restart the brain container:**
-
-```bash
-docker compose up -d
-```
-
-**3. Configure Open WebUI:**
-
-Go to **Admin Panel → Settings → Tools → MCP Servers** and add:
-
-- **URL:** `http://brain:7780/mcp` (if Open WebUI and brain share a Docker network)
-- **URL:** `http://host.docker.internal:7780/mcp` (if Open WebUI uses the host network)
-
-If they're in separate compose files, create a shared network:
-
-```bash
-docker network create brain-net
-```
-
-Then add `networks: [brain-net]` to both services and use `http://brain:7780/mcp` as the URL.
-
-### LM Studio
-
-LM Studio supports MCP tool use with compatible models. Connect it to the brain's HTTP transport.
-
-**1. Enable HTTP transport** (same as Open WebUI above — set `BRAIN_MCP_TRANSPORT=http` and expose port 7780).
-
-**2. In LM Studio**, open the MCP server configuration and add:
-
-- **URL:** `http://localhost:7780/mcp`
-- **Transport:** Streamable HTTP
-
-LM Studio requires a model that supports tool/function calling (e.g. Qwen 2.5, Llama 3.x, Mistral). The model must be loaded with tool use enabled for the brain tools to appear.
+> **Note:** The Docker MCP gateway launches its own containers — it does not connect to your existing `docker compose` services. The gateway container runs only the MCP server, not the indexer or REST API. For the full stack, use docker compose with HTTP transport (the recommended setup above).
 
 ### HTTP transport reference
 
 | Variable | Default | Description |
 |---|---|---|
-| `BRAIN_MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
+| `BRAIN_MCP_TRANSPORT` | `stdio` | Set to `http` to start the HTTP daemon in the entrypoint |
 | `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for HTTP mode |
 | `BRAIN_MCP_PORT` | `7780` | Port for HTTP mode |
 
