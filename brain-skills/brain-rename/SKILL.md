@@ -46,10 +46,19 @@ Report files updated as you go.
 
 ### 5. Rename the file
 
-Use the host filesystem path (strip the `/brain` prefix from any MCP path):
+Choose the approach based on your session context:
 
+**Brain-native session** (Claude Code opened directly in the vault root — direct filesystem access available):
 ```bash
 mv <old-path> <new-path>
+```
+Use the vault filesystem path (strip the `/brain` prefix if the path came from an MCP tool).
+
+**MCP-only session** (external project with brain connected as MCP — no direct filesystem access):
+```
+brain_read(old_path)            → capture content
+brain_write(new_path, content)  → write to new location
+brain_trash(old_path)           → remove old file and clean from index
 ```
 
 ### 6. Update the note's own frontmatter
