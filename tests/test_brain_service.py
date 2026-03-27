@@ -241,6 +241,22 @@ def test_backlinks_skips_hidden_dirs(tmp_path):
     assert len(backlinks) == 0
 
 
+def test_handle_brain_backlinks_consistent_with_find_backlinks(tmp_path):
+    """handle_brain_backlinks must return the same notes as find_backlinks."""
+    target = tmp_path / "target.md"
+    target.write_text("---\ntitle: Target\n---\n\nHello.")
+    linker = tmp_path / "linker.md"
+    linker.write_text("---\ntitle: Linker Note\n---\n\nSee [[target]] here.")
+
+    formatted = handle_brain_backlinks("target.md", str(tmp_path))
+    structured = find_backlinks(str(target), str(tmp_path))
+
+    assert len(structured) == 1
+    assert "Linker Note" in formatted
+    assert structured[0]["title"] == "Linker Note"
+    assert structured[0]["filepath"] == "linker.md"
+
+
 # ── brain_query input validation ─────────────────────────────────────
 
 

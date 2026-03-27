@@ -310,32 +310,11 @@ def handle_brain_backlinks(filepath: str, brain_path: str) -> str:
     if err := _check_within_brain(full_path, brain_path):
         return err
     rel = _relative_path(full_path, brain_path)
-    stem = os.path.splitext(os.path.basename(rel))[0]
-    targets = {rel, os.path.splitext(rel)[0], stem}
-    backlinks: list[str] = []
-    for root, dirs, files in os.walk(brain_path):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        for fname in files:
-            if not fname.endswith(".md"):
-                continue
-            fpath = os.path.join(root, fname)
-            if os.path.realpath(fpath) == os.path.realpath(full_path):
-                continue
-            try:
-                content = open(fpath, "r", encoding="utf-8").read()
-            except Exception:
-                continue
-            for m in _WIKILINK_RE.finditer(content):
-                link_target = m.group(1).strip()
-                if link_target in targets:
-                    meta, _ = extract_frontmatter(content)
-                    rel_link = _relative_path(fpath, brain_path)
-                    title = meta.get("title", fname)
-                    backlinks.append(f"- **{title}** ({rel_link})")
-                    break
-    if not backlinks:
+    results = find_backlinks(full_path, brain_path)
+    if not results:
         return "No backlinks found."
-    return f"Backlinks to {rel}:\n" + "\n".join(backlinks)
+    lines = [f"- **{r['title']}** ({r['filepath']})" for r in results]
+    return f"Backlinks to {rel}:\n" + "\n".join(lines)
 
 
 def extract_wikilinks(text: str) -> list[dict]:
