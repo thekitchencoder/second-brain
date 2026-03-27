@@ -76,7 +76,10 @@ RUN chown coder:coder /home/coder/.zshrc
 # System-wide zsh environment — ensures brain tools are on PATH for all zsh
 # instances (login, non-login, interactive, non-interactive) regardless of user
 RUN echo 'export PATH="/usr/local/lib/brain-tools:$PATH"' > /etc/zsh/zshenv \
-    && echo 'export PYTHONPATH="/usr/local/lib/brain-tools"' >> /etc/zsh/zshenv
+    && echo 'export PYTHONPATH="/usr/local/lib/brain-tools"' >> /etc/zsh/zshenv \
+    && echo 'export HISTFILE="/home/coder/.zsh-data/history"' >> /etc/zsh/zshenv \
+    && echo 'export HISTSIZE=10000' >> /etc/zsh/zshenv \
+    && echo 'export SAVEHIST=10000' >> /etc/zsh/zshenv
 
 # Add brain tools to PATH and Python path (for non-zsh processes)
 ENV PATH="/usr/local/lib/brain-tools:$PATH"
