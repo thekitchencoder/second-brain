@@ -94,7 +94,7 @@ RUN code-server --install-extension foam.foam-vscode \
 COPY --chown=coder:coder code-server/settings.json /home/coder/.local/share/code-server/User/settings.json
 COPY --chown=coder:coder code-server/keybindings.json /home/coder/.local/share/code-server/User/keybindings.json
 
-USER root
+USER coder
 
 WORKDIR /brain
 ENTRYPOINT ["/usr/local/lib/brain-tools/entrypoint.sh"]
