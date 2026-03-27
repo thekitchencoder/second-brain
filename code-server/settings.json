@@ -29,5 +29,6 @@
   "workbench.colorTheme": "Default Dark Modern",
   "explorer.confirmDelete": false,
   "explorer.confirmDragAndDrop": false,
-  "chat.disableAIFeatures": true
+  "chat.disableAIFeatures": true,
+  "terminal.integrated.defaultProfile.linux": "zsh"
 }
