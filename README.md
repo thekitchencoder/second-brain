@@ -128,10 +128,10 @@ brain-template-sync zk-to-obsidian
 
 The brain exposes an MCP server with two transports that can run **simultaneously**:
 
-- **stdio** — for Claude Code and Claude Desktop (always available via `docker exec`)
-- **HTTP** — Streamable HTTP on port 7780 for Open WebUI, LM Studio, and other network clients
+- **stdio** — on-demand via `docker exec` (always available, no config needed)
+- **HTTP** — Streamable HTTP on port 7780 (persistent daemon, started when `BRAIN_MCP_TRANSPORT=http`)
 
-Both transports share the same tools and handler logic. When you set `BRAIN_MCP_TRANSPORT=http`, the entrypoint starts the HTTP server as a background process alongside the indexer and REST API. The stdio transport remains available via `docker exec` — it starts a fresh process per invocation, not a persistent daemon.
+Both transports share the same tools and handler logic. When you set `BRAIN_MCP_TRANSPORT=http`, the entrypoint starts the HTTP daemon as a background process alongside the indexer and REST API. The stdio transport remains available via `docker exec` regardless — it spawns a fresh process per invocation.
 
 ### Recommended setup: docker compose with HTTP enabled
 
@@ -164,6 +164,7 @@ Now configure each client:
 | Client | Transport | How it connects |
 |---|---|---|
 | Claude Code | stdio | `docker exec -i brain brain-mcp-server` |
+| Claude Code | HTTP | `http://localhost:7780/mcp` |
 | Claude Desktop | stdio | `docker exec -i brain brain-mcp-server` |
 | Open WebUI | HTTP | `http://<host>:7780/mcp` |
 | LM Studio | HTTP | `http://localhost:7780/mcp` |
@@ -171,16 +172,29 @@ Now configure each client:
 
 ### Claude Code
 
-Register once across all your projects (user scope):
+**Option A — HTTP (recommended when HTTP transport is enabled):**
+
+```bash
+claude mcp add --transport http --scope user brain http://localhost:7780/mcp
+```
+
+Or in `.mcp.json` (shared with your team):
+
+```json
+{
+  "mcpServers": {
+    "brain": {
+      "type": "http",
+      "url": "http://localhost:7780/mcp"
+    }
+  }
+}
+```
+
+**Option B — stdio (works without HTTP transport):**
 
 ```bash
 claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server
-```
-
-Or for a single project only (adds `.mcp.json` to the project root):
-
-```bash
-claude mcp add --scope project brain -- docker exec -i brain brain-mcp-server
 ```
 
 Verify it's registered:
@@ -189,7 +203,7 @@ Verify it's registered:
 claude mcp list
 ```
 
-Claude Code launches `docker exec` each time it needs the MCP server. This uses stdio transport regardless of `BRAIN_MCP_TRANSPORT` — the env var only controls the persistent HTTP daemon.
+HTTP is simpler — no `docker exec` subprocess management — but requires `BRAIN_MCP_TRANSPORT=http` and port 7780 exposed. The stdio option works with the default container config and needs no port mapping.
 
 ### Claude Desktop
 
@@ -198,6 +212,21 @@ Add to your Claude Desktop config file:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+**HTTP (recommended when HTTP transport is enabled):**
+
+```json
+{
+  "mcpServers": {
+    "brain": {
+      "type": "http",
+      "url": "http://localhost:7780/mcp"
+    }
+  }
+}
+```
+
+**stdio (works without HTTP transport):**
 
 ```json
 {
@@ -210,7 +239,7 @@ Add to your Claude Desktop config file:
 }
 ```
 
-The brain container must be running before starting Claude Desktop. Like Claude Code, this uses stdio via `docker exec`.
+The brain container must be running before starting Claude Desktop.
 
 ### Open WebUI
 
