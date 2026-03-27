@@ -28,6 +28,21 @@ brain-init
 brain-index run
 ```
 
+## Upgrading
+
+```bash
+# 1. Pull the new container image
+docker compose pull && docker compose up -d
+
+# 2. Update templates in your vault
+cp /path/to/second-brain/zk/templates/*.md $BRAIN_HOST_PATH/.zk/templates/
+
+# 3. Update skills (if copied, not symlinked — see Skills section below)
+cp -r skills/brain-* ~/.claude/skills/
+```
+
+No re-indexing required unless the release notes say otherwise.
+
 ## Host aliases
 
 Add to `~/.zshrc` or `~/.bashrc`:
@@ -406,15 +421,16 @@ for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/sk
 | `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort, flags orphans and missing stubs |
 | `brain-extract` | "Pull the ideas out of this note" | Extracts atomic ideas from a long note into separate Cards with wikilinks back |
 
-### Claude Desktop
+### Claude Desktop / claude.ai
 
-Zip each skill folder and upload via **Customize → Skills**:
+Skills are uploaded as ZIP files:
 
 ```bash
 cd skills && for d in brain-*/; do zip -r "${d%/}.zip" "$d"; done
 ```
 
-Then upload each `.zip` in Claude Desktop → Customize → Skills.
+- **Claude Desktop:** Settings → Customize → Skills → upload each `.zip`
+- **claude.ai:** Open a Project → Project settings → Skills → upload each `.zip`
 
 See [`skills/README.md`](skills/README.md) for details on what each skill does.
 
