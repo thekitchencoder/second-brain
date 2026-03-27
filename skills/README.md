@@ -4,10 +4,25 @@ These skills give Claude Code the ability to use your second-brain without any c
 
 ## Install
 
-Copy the skill directories to your Claude skills folder:
+**Global skills** (available in all vaults):
 
 ```bash
 cp -r skills/brain-* ~/.claude/skills/
+```
+
+Or symlink so updates are picked up automatically:
+
+```bash
+ln -s "$(pwd)/skills/brain-context" ~/.claude/skills/brain-context
+ln -s "$(pwd)/skills/brain-save" ~/.claude/skills/brain-save
+ln -s "$(pwd)/skills/brain-project" ~/.claude/skills/brain-project
+ln -s "$(pwd)/skills/brain-hygiene" ~/.claude/skills/brain-hygiene
+```
+
+**Vault-level skills** (auto-load when Claude Code opens the vault directory):
+
+```bash
+ln -s "$(pwd)/brain-skills" /path/to/vault/.claude/skills
 ```
 
 ## Skills

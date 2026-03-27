@@ -15,7 +15,7 @@ Invoke when the user names a project, concept, or topic they want to work on. Do
 
 1. Run `brain_search(query)` using the topic as the query
 2. If a tag can be inferred from the topic, also run `brain_query(tag=<slug>)`
-3. If a related filepath is known, run `brain_related(filepath)` to find connected notes
+3. If step 1 returned a relevant note, take its filepath from the search results and run `brain_related(filepath)` to find connected notes
 4. For any result with `status: current` or `type: context-primer`, call `brain_read(filepath)` to retrieve the full document — search results only show a short excerpt
 5. Surface the full content of key documents; for less relevant hits show the frontmatter summary only
 

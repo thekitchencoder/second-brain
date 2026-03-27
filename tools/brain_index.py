@@ -152,12 +152,15 @@ def watch_brain(brain_path: str, db_path: str) -> None:
     for changes in watch(brain_path, force_polling=True):
         for change_type, path in changes:
             if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts and ".trash" not in Path(path).parts:
-                if os.path.isfile(path):
-                    print(f"Reindexing {path}", file=sys.stderr)
-                    index_file(path, db_path)
-                else:
-                    print(f"Purging deleted/renamed: {path}", file=sys.stderr)
-                    purge_stale_paths(db_path)
+                try:
+                    if os.path.isfile(path):
+                        print(f"Reindexing {path}", file=sys.stderr)
+                        index_file(path, db_path)
+                    else:
+                        print(f"Purging deleted/renamed: {path}", file=sys.stderr)
+                        purge_stale_paths(db_path)
+                except Exception as e:
+                    print(f"Error indexing {path}: {e}", file=sys.stderr)
 
 
 def main() -> None:
