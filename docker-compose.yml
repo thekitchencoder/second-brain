@@ -9,20 +9,10 @@ services:
       # Set it explicitly: export BRAIN_HOST_PATH=~/Documents/brain
       - ${BRAIN_HOST_PATH}:/brain
       - ${HOME}/.claude:/home/coder/.claude
-      - ${HOME}/.claude.json:/home/coder/.claude.json
       - code-server-data:/home/coder/.local/share/code-server
       - zsh-data:/home/coder/.zsh-data
     env_file:
       - .env
-    environment:
-      # Pass credentials from host shell — set these in ~/.zshrc, not .env
-      - ANTHROPIC_API_KEY
-      - ANTHROPIC_AUTH_TOKEN
-      - AWS_ACCESS_KEY_ID
-      - AWS_SECRET_ACCESS_KEY
-      - AWS_SESSION_TOKEN
-      - AWS_DEFAULT_REGION
-      - AWS_REGION
     ports:
       - "${BRAIN_API_PORT:-7779}:7779"
       - "${CODE_SERVER_PORT:-8080}:8080"
