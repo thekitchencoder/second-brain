@@ -1,6 +1,5 @@
 #!/bin/sh
-# Start the brain indexer in watch mode as a background service.
-# Logs go to /brain/.ai/watch.log alongside the embeddings DB.
+# Start brain background services, then hand off to code-server.
 #
 # The watcher requires only the embedding model to be reachable — it has
 # no dependency on brain-init or zk. If the model is not yet available,
@@ -29,4 +28,5 @@ if [ -d /brain ]; then
         BRAIN_MCP_TRANSPORT=http brain-mcp-server >> /brain/.ai/mcp-http.log 2>&1 &
     fi
 fi
-exec "$@"
+# Hand off to code-server's entrypoint (passes "$@" = "--auth none /brain")
+exec /usr/bin/entrypoint.sh "$@"
