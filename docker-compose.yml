@@ -12,6 +12,8 @@ services:
       # into the running container. BRAIN_HOST_PATH is also present in this
       # file but is not used by the container — it only serves the line above.
       - .env
+    ports:
+      - "${BRAIN_API_PORT:-7779}:7779"
     stdin_open: true
     tty: true
     restart: unless-stopped
