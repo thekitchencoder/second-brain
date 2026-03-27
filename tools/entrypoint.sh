@@ -14,5 +14,9 @@ if [ -d /brain ]; then
             sleep 30
         done
     ) &
+    # Start the REST API server (unless explicitly disabled)
+    if [ "${BRAIN_API_DISABLED:-}" != "1" ]; then
+        brain-api >> /brain/.ai/api.log 2>&1 &
+    fi
 fi
 exec "$@"
