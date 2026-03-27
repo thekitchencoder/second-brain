@@ -18,3 +18,10 @@ class Config:
     @property
     def db_path(self):
         return f"{self.brain_path}/.ai/embeddings.db"
+
+    @property
+    def cors_origins(self) -> list:
+        raw = os.environ.get("BRAIN_API_CORS_ORIGINS", "")
+        if raw:
+            return [o.strip() for o in raw.split(",") if o.strip()]
+        return ["http://localhost:7779", "http://127.0.0.1:7779"]
