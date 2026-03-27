@@ -294,6 +294,14 @@ def test_handle_brain_search_returns_error_on_embedding_failure(tmp_path):
 # ── brain_create template validation ─────────────────────────────────
 
 
+def test_brain_create_rejects_empty_title(tmp_path):
+    result = handle_brain_create("effort", "", str(tmp_path))
+    assert "Error" in result and "title" in result.lower()
+
+def test_brain_create_rejects_whitespace_title(tmp_path):
+    result = handle_brain_create("effort", "   ", str(tmp_path))
+    assert "Error" in result and "title" in result.lower()
+
 def test_brain_create_rejects_path_traversal_template(tmp_path):
     result = handle_brain_create("../../../etc/passwd", "Test", str(tmp_path))
     assert "invalid" in result.lower() or "template" in result.lower()

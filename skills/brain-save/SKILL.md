@@ -12,7 +12,7 @@ Save something to the second-brain with correct frontmatter and placement.
 1. Run `brain_search` on the topic to check if a note already exists. If a match is found, call `brain_read(filepath)` to get the full content, then offer to update it rather than create a duplicate
 2. Use Glob to scan the top-level folder structure of the brain and infer where similar content lives — suggest a location based on existing patterns
 3. Agree the location with the user if ambiguous
-4. Call `brain_templates` to see what templates are available, then call `brain_create(template, title, directory)` — pass the target subdirectory so the file is created in the right place, not the brain root. Note the returned filepath.
+4. Call `brain_templates` to see what templates are available. If no templates are returned, ask the user to run `brain-init` to set up the vault, then stop. Otherwise call `brain_create(template, title, directory)` — pass the target subdirectory so the file is created in the right place, not the brain root. If unsure which template fits, ask the user. Note the returned filepath.
 5. Compose the full file content with exactly these frontmatter fields:
 
 ```yaml

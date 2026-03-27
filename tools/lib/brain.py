@@ -138,9 +138,11 @@ def handle_brain_query(
     if note_type:
         cmd += ["--match", f"type:{note_type}"]
     try:
-        result = subprocess.run(cmd, cwd=brain_path, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=brain_path, capture_output=True, text=True, timeout=30)
     except FileNotFoundError:
         return "zk is not installed or not on PATH. Is the container running?"
+    except subprocess.TimeoutExpired:
+        return "Error: zk timed out"
     if result.returncode != 0:
         return f"zk list failed: {result.stderr}"
     files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
@@ -206,6 +208,8 @@ def handle_brain_create(
     template: str, title: str, brain_path: str, directory: Optional[str] = None
 ) -> str:
     # Validate template is a bare filename — no path separators or traversal
+    if not title or not title.strip():
+        return "Error: title is required"
     bare = template[:-3] if template.endswith(".md") else template
     if "/" in bare or "\\" in bare or ".." in bare:
         return "Invalid template name: must be a bare filename with no path separators"
@@ -224,10 +228,12 @@ def handle_brain_create(
                 "zk", "new", "--working-dir", target_dir,
                 "--template", template, "--title", title, "--print-path",
             ],
-            cwd=brain_path, capture_output=True, text=True,
+            cwd=brain_path, capture_output=True, text=True, timeout=30,
         )
     except FileNotFoundError:
         return "zk is not installed or not on PATH. Is the container running?"
+    except subprocess.TimeoutExpired:
+        return "Error: zk timed out"
     if result.returncode != 0:
         available = handle_brain_templates(brain_path)
         return f"zk new failed: {result.stderr.strip()}\n\n{available}"
