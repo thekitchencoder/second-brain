@@ -28,10 +28,5 @@ if [ -d /brain ]; then
         BRAIN_MCP_TRANSPORT=http brain-mcp-server >> /brain/.ai/mcp-http.log 2>&1 &
     fi
 fi
-# Start LiteLLM proxy if ANTHROPIC_BASE_URL points at localhost:4000.
-# This translates Claude Code's Anthropic API calls → Docker Model Runner.
-if [ "${ANTHROPIC_BASE_URL:-}" = "http://localhost:4000" ]; then
-    litellm --config /usr/local/lib/brain-tools/litellm.yaml --port 4000 --num_workers 1 >> /brain/.ai/litellm.log 2>&1 &
-fi
 # Hand off to code-server's entrypoint (passes "$@" = "--auth none /brain")
 exec /usr/bin/entrypoint.sh "$@"
