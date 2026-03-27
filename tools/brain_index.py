@@ -13,7 +13,7 @@ from pathlib import Path
 from lib.clean import chunk_text, clean_content, extract_frontmatter
 from lib.config import Config
 from lib.db import init_db, upsert_chunk
-from lib.embeddings import get_embedding
+from lib.embeddings import get_embedding, EmbeddingError
 
 _cfg = Config()
 
@@ -43,7 +43,11 @@ def index_file(filepath: str, db_path: str) -> None:
         content_hash = hashlib.sha256(chunk.encode()).hexdigest()
         if existing_hashes.get(i) == content_hash:
             continue
-        embedding = get_embedding(chunk)
+        try:
+            embedding = get_embedding(chunk)
+        except EmbeddingError as e:
+            print(f"Warning: skipping chunk {i} of {filepath}: {e}", file=sys.stderr)
+            continue
         upsert_chunk(
             db_path=db_path,
             filepath=filepath,
@@ -76,7 +80,11 @@ def index_file(filepath: str, db_path: str) -> None:
 def detect_embedding_dim() -> int:
     """Call the embedding API once to get the actual output dimension."""
     print(f"Detecting embedding dimension for {_cfg.embedding_model}...", file=sys.stderr)
-    vec = get_embedding("dimension probe")
+    try:
+        vec = get_embedding("dimension probe")
+    except EmbeddingError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
     dim = len(vec)
     print(f"  → {dim} dimensions", file=sys.stderr)
     return dim

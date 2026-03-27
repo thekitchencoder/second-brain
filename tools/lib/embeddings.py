@@ -9,6 +9,11 @@ _cfg = Config()
 _client = None
 
 
+class EmbeddingError(RuntimeError):
+    """Raised when the embedding service is unavailable or misconfigured."""
+    pass
+
+
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
@@ -33,12 +38,12 @@ def get_embedding(text: str, max_chars: int = 1500) -> list[float]:
             return get_embedding(text, max_chars // 2)
         raise
     except NotFoundError:
-        print(f"\nError: embedding model '{_cfg.embedding_model}' not found.", file=sys.stderr)
-        print(f"  Endpoint: {_cfg.embedding_base_url}", file=sys.stderr)
-        print(f"  Check that the model is loaded and EMBEDDING_MODEL is set correctly.", file=sys.stderr)
-        sys.exit(1)
+        raise EmbeddingError(
+            f"Embedding model '{_cfg.embedding_model}' not found at {_cfg.embedding_base_url}. "
+            f"Check that the model is loaded and EMBEDDING_MODEL is set correctly."
+        )
     except APIConnectionError:
-        print(f"\nError: cannot connect to embedding endpoint.", file=sys.stderr)
-        print(f"  Endpoint: {_cfg.embedding_base_url}", file=sys.stderr)
-        print(f"  Is Docker Model Runner (or your configured LLM server) running?", file=sys.stderr)
-        sys.exit(1)
+        raise EmbeddingError(
+            f"Cannot connect to embedding endpoint {_cfg.embedding_base_url}. "
+            f"Is Docker Model Runner (or your configured LLM server) running?"
+        )

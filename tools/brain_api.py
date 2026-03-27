@@ -181,9 +181,12 @@ def search_notes(
 ):
     """Semantic vector search across all brain notes."""
     from lib.db import search_chunks
-    from lib.embeddings import get_embedding
+    from lib.embeddings import get_embedding, EmbeddingError
 
-    embedding = get_embedding(q)
+    try:
+        embedding = get_embedding(q)
+    except EmbeddingError as e:
+        raise HTTPException(503, f"Embedding service unavailable: {e}")
     results = search_chunks(_cfg.db_path, embedding, limit=limit)
     return [
         SearchResult(
