@@ -27,23 +27,20 @@ Read the note. Confirm with the user: "Renaming `Cards/old-title.md` — is that
 
 ### 3. Find all wikilink variants
 
-Grep across the vault for every way this note might be linked.
+Run both in parallel:
 
-Common variants to search for:
-```
-[[Old Title]]
-[[old-title]]
-[[Old Title|display text]]
-[[old-title|display text]]
-```
+**a. `brain_backlinks(old-path)`** — finds all notes linking by slug form: `[[old-title]]`, `[[old-title|display]]`, `[[Cards/old-title]]`
 
-Derive search terms from both the current filename (strip `.md`, un-hyphenate) and the current `title:` frontmatter field.
+**b. Grep for title-case form** — `brain_backlinks` does not match by title, so grep separately for `[[Old Title]]` and `[[Old Title|` variants derived from the current `title:` frontmatter field
+
+Merge and deduplicate.
 
 ### 4. Update wikilinks
 
-For each file containing a match:
-- Use `Edit` to replace each variant with the new title/slug
-- Preserve display text: `[[Old Title|display text]]` → `[[New Title|display text]]`
+For each file containing a match, use `brain_edit(op=find_replace)` to replace each variant (do **not** use `regex=true` — square brackets are regex metacharacters):
+- `brain_edit(op=find_replace, filepath=..., find="[[old-title]]", replace="[[new-title]]")`
+- `brain_edit(op=find_replace, filepath=..., find="[[Old Title]]", replace="[[New Title]]")`
+- Preserve display text: `find="[[Old Title|"` → `replace="[[New Title|"` (prefix match — leaves the alias label intact)
 
 Report files updated as you go.
 
@@ -55,14 +52,14 @@ mv <old-path> <new-path>
 
 ### 6. Update the note's own frontmatter
 
-Patch the `title:` field in the renamed file to match the new title.
+`brain_edit(op=update_frontmatter, filepath=<new-path>, frontmatter={"title": "<New Title>"})`
 
 ### 7. Report
 
 ```
 Renamed: Cards/old-title.md → Cards/new-title.md
 Updated wikilinks in 4 files:
-  Projects/jobs-guarantee/_index.md
+  Efforts/jobs-guarantee.md
   Cards/related-idea.md
   ...
 ```

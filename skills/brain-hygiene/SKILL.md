@@ -9,23 +9,43 @@ Systematic audit of the second-brain. Four checks in order. Fix what is unambigu
 
 ## Check 1: Frontmatter Completeness
 
-Use `brain_query` (or `brain_search` broadly) to enumerate notes, then call `brain_read(filepath)` for each one to inspect its content. The brain runs inside Docker — use `brain_read`, not the filesystem Read tool. Flag any file missing one or more of these required fields:
+Use `brain_query` (or `brain_search` broadly) to enumerate notes, then call `brain_read(filepath)` for each one to inspect its content. The brain runs inside Docker — use `brain_read`, not the filesystem Read tool.
 
+**Required universal fields (all types):**
 ```
 type, title, status, created, tags
 ```
 
-**Fix:** if `created` is missing and the file has a filesystem mtime, use that date. For all other missing fields, propose a value based on the content and ask before writing.
+**Valid types:** `effort`, `discovery`, `context-primer`, `spec`, `adr`, `source`, `meeting`, `daily`
+
+**Deprecated types — fix on sight:**
+- `type: project` → migrate to `type: effort`
+- `type: moc` → migrate to `type: effort`
+
+**Deprecated fields — remove on sight:**
+`project:` (as a field; use `^project:\s` as the regex to avoid matching keys like `project-id:`), `scope:`, `technical-level:`, `phase:`, `stack:`, `repo:`, `agents:`, `priority:`, `complexity:`, `delegate:`, `assignee:`
+
+Exceptions for `adr` notes: `id:` and `date:` (the decision date, distinct from `created:`) are both valid.
+
+**Fixing deprecated types** (after confirming with user):
+- `brain_edit(op=update_frontmatter, filepath=..., frontmatter={"type": "effort"})`
+
+**Fixing deprecated fields** — `update_frontmatter` cannot remove keys; use find_replace instead:
+- `brain_edit(op=find_replace, filepath=..., find="^scope:.*\n", replace="", regex=true)`
+- Apply the same pattern for each deprecated scalar field name
+- **Exception for list-valued fields** (`stack:`, `agents:`): the key line plus its indented items must be removed manually — a single-line regex will only strip the key and leave orphaned `  - ""` lines. Read the note, identify the full block, and use a multiline `find_replace` to remove it.
+
+**Fixing missing `created`:** use `update_frontmatter` with the mtime date.
+
+**Legacy `captured:` format on discovery notes:** older notes may have a datetime value (`2024-03-01T15:04:05`) rather than date-only. This is harmless — do not migrate unless the user asks.
 
 **Do not** batch-fix without reading the content first.
 
 ## Check 2: Orphaned Notes
 
-Use `brain_read` to read each file's content for wikilink scanning — Grep cannot reach inside the Docker container.
+**Outbound orphans:** Use `brain_read` to read each file's content and check for absence of `[[wikilinks]]`. These notes link to nothing.
 
-**Outbound orphans:** Files containing no `[[wikilinks]]`. These notes link to nothing.
-
-**Inbound orphans:** Build a list of all filenames (without extension). Grep for `[[filename]]` patterns across all files. Notes with no inbound links are unreferenced.
+**Inbound orphans:** For each note, call `brain_backlinks(filepath)`. Notes where backlinks returns empty are unreferenced. No need to build a manual filename index.
 
 Report both sets with title and path. Do not delete.
 
@@ -50,10 +70,12 @@ Present to the user for a decision on each: promote to `current`, move to `archi
 
 | Issue | Action |
 |-------|--------|
-| Missing `created` (mtime available) | Fix |
-| Missing `type`, `title`, `status`, `tags` | Propose + ask |
+| Missing `created` (mtime available) | Fix — `update_frontmatter` |
+| Missing `type`, `title`, `status`, `tags` | Propose + ask — `update_frontmatter` |
+| `type: project` or `type: moc` | Propose migration + ask — `update_frontmatter` |
+| Deprecated field present | Propose removal + ask — `find_replace` with regex |
 | Outbound orphan (no links out) | Flag |
-| Inbound orphan (nothing links to it) | Flag |
+| Inbound orphan (`brain_backlinks` returns empty) | Flag |
 | Broken wikilink target | Flag — do not create stub |
 | Stale draft | Flag — do not auto-promote |
 | Empty file | Flag — do not delete without confirmation |

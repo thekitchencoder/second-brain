@@ -24,9 +24,10 @@ Accept any of:
 
 Read the resolved note with the `Read` tool.
 
-### 2. Search (run both in parallel)
+### 2. Search (run all three in parallel)
 
 - `brain_related(filepath)` — semantic similarity via embeddings
+- `brain_backlinks(filepath)` — notes that already wikilink TO this note (structural context)
 - `Grep` for key terms from the note's title and tags — catches structural links the embedding may miss (project slug, effort name, tag values, key noun phrases)
 
 Deduplicate. Exclude notes already wikilinked in the note body.
@@ -36,8 +37,11 @@ Deduplicate. Exclude notes already wikilinked in the note body.
 Group by match strength:
 
 ```
+Already links here (backlinks):
+  Efforts/jobs-guarantee.md — wikilinks to this note
+
 Strong match (semantic + keyword overlap):
-  Projects/jobs-guarantee/automation-proposal.md
+  Efforts/jobs-guarantee/automation-proposal.md
   "automation and labour market reform..."
 
 Weaker match (keyword only):
@@ -48,11 +52,10 @@ Weaker match (keyword only):
 
 Ask: "Want me to add these as `[[wikilinks]]`?"
 
-If yes:
-- Note has `## Related` section → append links there
-- No `## Related` section → add one at the bottom of the note
-- Use `Edit` to patch the file directly
-- Report which links were added and where
+If yes, for each candidate:
+- `brain_edit(op=insert_wikilink, filepath=<this note>, target=<candidate title>, context_heading="Related")`
+- `insert_wikilink` is idempotent — safe to call without checking if the link already exists
+- Report which links were added
 
 ## Common Mistakes
 

@@ -17,12 +17,12 @@ MCP paths: `/brain/X` → `X` (strip `/brain` prefix)
 
 Accept: effort name, slug, or directory path.
 
-- Glob for `Efforts/<slug>/_index.md`
+- Glob for `Efforts/<slug>.md`
 - If ambiguous, run `brain_search(effort name)` and confirm with user
 
-Read the `_index.md`.
+Read `Efforts/<slug>.md`.
 
-### 2. Collect all related notes (three passes, run in parallel)
+### 2. Collect all related notes (four passes, run in parallel)
 
 **a. Directory scan** — Glob `Efforts/<slug>/**/*.md` — all notes physically in the effort folder
 
@@ -30,7 +30,9 @@ Read the `_index.md`.
 
 **c. Tag search** — `brain_query(tag=<effort-slug>)` — notes explicitly tagged to this effort
 
-Deduplicate across all three passes.
+**d. Backlinks** — `brain_backlinks(Efforts/<slug>.md)` — notes that wikilink to the effort note
+
+Deduplicate across all four passes.
 
 ### 3. Group by status
 
@@ -52,13 +54,13 @@ Deduplicate across all three passes.
 
 ### 4. Identify gaps and orphans
 
-**Orphans** — notes found in steps 2–3 that are not referenced in `_index.md`:
+**Orphans** — notes found in steps 2–3 that are not wikilinked from `Efforts/<slug>.md`:
 ```
-Not in _index.md:
-  Cards/ubi-comparison.md — tagged jobs-guarantee but not linked from index
+Not linked from effort note:
+  Cards/ubi-comparison.md — tagged jobs-guarantee but not linked from effort
 ```
 
-**Missing links** — wikilinks in `_index.md` that point to notes that don't exist yet (stubs):
+**Missing links** — wikilinks in `Efforts/<slug>.md` that point to notes that don't exist yet (stubs):
 ```
 Linked but missing:
   [[Policy Research]] — no note found
@@ -67,11 +69,11 @@ Linked but missing:
 ### 5. Offer actions
 
 After the report, ask:
-- "Want me to update `_index.md` to include the orphaned notes?"
+- "Want me to add wikilinks for the orphaned notes into `Efforts/<slug>.md`?" → if yes: `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")` for each orphan
 - "Want to triage the raw notes now?" (hands off to `brain-triage` flow)
 
 ## Rules
 
 - **Report only — don't modify without asking.**
 - **Missing stubs are not errors** — they're future work, just flag them.
-- **Surface the full _index.md** — the user needs to see what's there before deciding what to change.
+- **Surface the full effort note** — the user needs to see what's there before deciding what to change.

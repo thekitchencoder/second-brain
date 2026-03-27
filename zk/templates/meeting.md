@@ -3,7 +3,7 @@ type: meeting
 title: "Meeting — {{title}}"
 date: {{format-date now "2006-01-02"}}
 attendees: []
-project: ""
+effort: ""
 created: {{format-date now "2006-01-02"}}
 tags: [meeting]
 ---
