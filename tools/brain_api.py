@@ -318,6 +318,8 @@ def edit_note(filepath: str, req: EditRequest):
         text, n = find_replace(
             text, req.find, req.replace or "", regex=req.regex, count=req.count
         )
+        if n == -1:
+            raise HTTPException(400, text)  # text is the error message
         detail = f"Replaced {n} occurrence(s)"
 
     elif op == EditOp.insert_wikilink:
