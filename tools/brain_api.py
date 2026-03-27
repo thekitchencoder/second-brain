@@ -214,6 +214,8 @@ def list_notes(
     result = handle_brain_query(
         tag=tag, status=status, note_type=type, brain_path=_cfg.brain_path
     )
+    if result.startswith("Invalid"):
+        raise HTTPException(400, result)
     if result.startswith("No notes") or result.startswith("zk"):
         return []
     return [f.strip() for f in result.splitlines() if f.strip()]
@@ -350,7 +352,7 @@ def create_note(req: CreateRequest):
         brain_path=_cfg.brain_path,
         directory=req.directory,
     )
-    if "failed" in result.lower():
+    if not result.endswith(".md"):
         raise HTTPException(400, result)
     return EditResponse(filepath=_relative(result), success=True, detail=f"Created: {result}")
 
