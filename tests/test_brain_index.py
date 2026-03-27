@@ -119,6 +119,15 @@ def test_index_file_prunes_excess_chunks_when_file_shrinks(brain, mock_embed):
     assert len(rows) == 1, f"expected 1 chunk, got {len(rows)}"
     assert rows[0][0] == 0
 
+    # Also verify the embeddings rows for the pruned chunks are gone
+    from lib.db import _connect
+    vec_conn = _connect(db_path)
+    try:
+        emb_rows = vec_conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+    finally:
+        vec_conn.close()
+    assert emb_rows == 1, f"expected 1 embedding row after shrink, got {emb_rows}"
+
 
 def test_purge_stale_paths_also_deletes_embeddings(brain, mock_embed):
     """Deleting stale chunk rows must also remove the corresponding embeddings rows."""
