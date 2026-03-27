@@ -35,7 +35,7 @@ def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
     Raises ValueError if the DB already exists with a different embedding dimension —
     delete the DB file and reindex to switch models.
     """
-    if not isinstance(embedding_dim, int) or embedding_dim <= 0:
+    if isinstance(embedding_dim, bool) or not isinstance(embedding_dim, int) or embedding_dim <= 0:
         raise ValueError(f"embedding_dim must be a positive integer, got {embedding_dim!r}")
 
     stored_dim = get_stored_dim(db_path)
