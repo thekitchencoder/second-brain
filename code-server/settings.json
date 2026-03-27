@@ -19,6 +19,7 @@
   "foam.files.ignore": [
     "**/.zk/**",
     "**/zk/**",
+    "**/templates/**",
     "**/.ai/**",
     "**/.trash/**",
     "**/.git/**"
