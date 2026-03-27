@@ -342,8 +342,6 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         return f"Error: file not found: {filepath}"
 
     rel = _relative_path(full_path, brain_path)
-    if rel.startswith("..") or rel.startswith("/"):
-        return f"Error: resolved path is outside the brain: {filepath}"
     trash_root = os.path.join(brain_path, ".trash")
     dest_path = os.path.join(trash_root, rel)
     origin_sidecar: Optional[str] = None
@@ -355,6 +353,7 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         dest_path = os.path.join(os.path.dirname(dest_path), suffixed_name)
         origin_sidecar = os.path.splitext(dest_path)[0] + ".origin"
 
+    backlinks = find_backlinks(full_path, brain_path)
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     os.rename(full_path, dest_path)
 
@@ -366,8 +365,6 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         delete_file_chunks(db_path, full_path)
     except Exception:
         pass  # DB may not exist yet — don't fail the trash
-
-    backlinks = find_backlinks(full_path, brain_path)
     trash_rel = _relative_path(dest_path, brain_path)
 
     if backlinks:
