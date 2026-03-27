@@ -316,6 +316,46 @@ git commit -m "feat: collapse to single service in docker-compose"
 
 ---
 
+### Task 4a: Mount host Claude config into the container
+
+**Files:**
+- Modify: `docker-compose.yml`
+
+**Step 1: Add the Claude config bind mount**
+
+Add one line to the `volumes:` block of the `brain` service:
+
+```yaml
+      - ${HOME}/.claude:/home/coder/.claude:ro
+```
+
+The `:ro` flag makes it read-only so the container can use your config, skills, memory, and MCP settings without being able to modify them.
+
+Full updated `volumes:` block for reference:
+```yaml
+    volumes:
+      - ${BRAIN_HOST_PATH}:/brain
+      - ${HOME}/.claude:/home/coder/.claude:ro
+      - code-server-data:/home/coder/.local/share/code-server
+```
+
+**Step 2: Verify compose config**
+
+```bash
+BRAIN_HOST_PATH=/tmp docker compose config
+```
+
+Expected: `~/.claude` bind mount appears in the brain service volumes list.
+
+**Step 3: Commit**
+
+```bash
+git add docker-compose.yml
+git commit -m "feat: mount host ~/.claude into container for Claude Code config and skills"
+```
+
+---
+
 ### Task 5: Delete code-server/Dockerfile
 
 **Files:**
