@@ -68,11 +68,17 @@ RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-template-sync \
               /usr/local/lib/brain-tools/entrypoint.sh
 
-# Shell environment for coder user (brain aliases, prompt)
+# Shell environment — copy to both coder and root (container runs as root)
 COPY tools/brain.zshrc /home/coder/.zshrc
+COPY tools/brain.zshrc /root/.zshrc
 RUN chown coder:coder /home/coder/.zshrc
 
-# Add brain tools to PATH and Python path (for all users)
+# System-wide zsh environment — ensures brain tools are on PATH for all zsh
+# instances (login, non-login, interactive, non-interactive) regardless of user
+RUN echo 'export PATH="/usr/local/lib/brain-tools:$PATH"' > /etc/zsh/zshenv \
+    && echo 'export PYTHONPATH="/usr/local/lib/brain-tools"' >> /etc/zsh/zshenv
+
+# Add brain tools to PATH and Python path (for non-zsh processes)
 ENV PATH="/usr/local/lib/brain-tools:$PATH"
 ENV PYTHONPATH="/usr/local/lib/brain-tools"
 
