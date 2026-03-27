@@ -119,14 +119,14 @@ def find_replace(text: str, find: str, replace: str, *, regex: bool = False, cou
     """Find and replace text. Returns (new_text, num_replacements).
 
     count=0 means replace all occurrences.
-    On invalid regex, returns (error_message, -1).
+    On invalid regex pattern or replacement string, returns (error_message, -1).
     """
     if regex:
         try:
             pattern = re.compile(find)
+            new_text, n = pattern.subn(replace, text, count=count or 0)
         except re.error as e:
-            return f"Invalid regex: {e}", -1
-        new_text, n = pattern.subn(replace, text, count=count or 0)
+            return f"Invalid regex pattern or replacement: {e}", -1
     else:
         if count == 0:
             new_text = text.replace(find, replace)
