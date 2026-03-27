@@ -65,6 +65,21 @@ Present to the user for a decision on each: promote to `current`, move to `archi
 
 **Do not auto-promote.** Drafts are promoted by the human.
 
+## Check 5: Trash
+
+Glob `.trash/**/*.md`. If the result is empty, skip this check.
+
+For each file found:
+- Derive the original path: read from the `.origin` sidecar (same stem, `.origin` extension) if present; otherwise strip the `.trash/` prefix from the path.
+- Show: original path, trashed date (file mtime), current trash path.
+- Ask the user: **[restore]** | **[permanently delete]** | **[skip]**
+
+**Restore:** `brain_restore(trash_path)`
+
+**Permanently delete:** remove the `.md` file and its `.origin` sidecar (if present). This is irreversible — confirm per file. Use `rm` on the host filesystem path (the vault-relative `.trash/...` path maps directly when Claude Code is opened in the vault root).
+
+Never auto-empty the trash.
+
 ---
 
 ## Fix vs Flag
