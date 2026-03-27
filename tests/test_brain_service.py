@@ -55,6 +55,13 @@ def test_relative_path(tmp_path):
     assert _relative_path(str(tmp_path / "sub" / "note.md"), str(tmp_path)) == "sub/note.md"
 
 
+def test_relative_path_does_not_match_sibling_prefix():
+    """_relative_path('/brain-backup/note.md', '/brain') must not strip the prefix."""
+    result = _relative_path("/brain-backup/note.md", "/brain")
+    # Should return the full path unchanged, not 'backup/note.md'
+    assert result == "/brain-backup/note.md"
+
+
 def test_format_results_empty():
     assert _format_results([]) == "No results found."
 
