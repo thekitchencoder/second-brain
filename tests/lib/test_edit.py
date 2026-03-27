@@ -157,9 +157,16 @@ def test_find_replace_no_match():
 
 
 def test_find_replace_invalid_regex_returns_error():
-    """Invalid regex must return an error tuple, not raise."""
+    """Invalid regex pattern must return an error tuple, not raise."""
     text, n = find_replace("some text", r"(invalid[regex", "replace", regex=True)
     assert n == -1  # sentinel for error
+    assert "Invalid regex" in text
+
+
+def test_find_replace_invalid_replacement_returns_error():
+    """Invalid backreference in replacement string must also return error tuple, not raise."""
+    text, n = find_replace("hello", r"(hello)", r"\9", regex=True)
+    assert n == -1
     assert "Invalid regex" in text
 
 
