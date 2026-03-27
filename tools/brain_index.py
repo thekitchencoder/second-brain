@@ -54,6 +54,24 @@ def index_file(filepath: str, db_path: str) -> None:
             meta=meta,
         )
 
+    # Prune chunks whose index is beyond the current chunk count (file shrank)
+    from lib.db import _connect as _vec_connect
+    vec_conn = _vec_connect(db_path)
+    try:
+        stale_ids = [
+            row[0] for row in vec_conn.execute(
+                "SELECT id FROM chunks WHERE filepath=? AND chunk_index >= ?",
+                (filepath, len(chunks))
+            ).fetchall()
+        ]
+        if stale_ids:
+            placeholders = ",".join("?" * len(stale_ids))
+            vec_conn.execute(f"DELETE FROM embeddings WHERE rowid IN ({placeholders})", stale_ids)
+            vec_conn.execute(f"DELETE FROM chunks WHERE id IN ({placeholders})", stale_ids)
+            vec_conn.commit()
+    finally:
+        vec_conn.close()
+
 
 def detect_embedding_dim() -> int:
     """Call the embedding API once to get the actual output dimension."""
@@ -66,18 +84,29 @@ def detect_embedding_dim() -> int:
 
 def purge_stale_paths(db_path: str) -> None:
     """Remove DB entries for filepaths that no longer exist on disk."""
-    # Plain sqlite3.connect intentionally — no sqlite_vec needed for DELETE/SELECT on chunks.
+    from lib.db import _connect as _vec_connect
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute("SELECT DISTINCT filepath FROM chunks").fetchall()
         stale = [fp for (fp,) in rows if not os.path.isfile(fp)]
-        for fp in stale:
-            conn.execute("DELETE FROM chunks WHERE filepath=?", (fp,))
-            print(f"Purged stale: {fp}", file=sys.stderr)
-        if stale:
-            conn.commit()
     finally:
         conn.close()
+    for fp in stale:
+        vec_conn = _vec_connect(db_path)
+        try:
+            stale_ids = [
+                row[0] for row in vec_conn.execute(
+                    "SELECT id FROM chunks WHERE filepath=?", (fp,)
+                ).fetchall()
+            ]
+            if stale_ids:
+                placeholders = ",".join("?" * len(stale_ids))
+                vec_conn.execute(f"DELETE FROM embeddings WHERE rowid IN ({placeholders})", stale_ids)
+            vec_conn.execute("DELETE FROM chunks WHERE filepath=?", (fp,))
+            vec_conn.commit()
+            print(f"Purged stale: {fp}", file=sys.stderr)
+        finally:
+            vec_conn.close()
 
 
 def index_brain(brain_path: str, db_path: str) -> None:
