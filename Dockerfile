@@ -89,7 +89,8 @@ EXPOSE 7779 8080
 USER coder
 RUN code-server --install-extension foam.foam-vscode \
     && code-server --install-extension yzhang.markdown-all-in-one \
-    && code-server --install-extension bierner.markdown-preview-github-styles
+    && code-server --install-extension bierner.markdown-preview-github-styles \
+    && code-server --install-extension mushan.vscode-paste-image
 
 # Bake in settings and keybindings
 COPY --chown=coder:coder code-server/settings.json /home/coder/.local/share/code-server/User/settings.json
