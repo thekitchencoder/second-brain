@@ -21,7 +21,7 @@ Grep for `status: raw` in frontmatter across the vault
 
 Report: "You have N raw notes. Working through them oldest first."
 
-Sort by `created` date ascending (oldest first) — use Grep `-l` to get paths, then read frontmatter.
+Sort oldest first — read frontmatter for each and sort by `captured:` (discovery notes) or `created:` (all other types) ascending.
 
 ### 2. Process one note at a time
 

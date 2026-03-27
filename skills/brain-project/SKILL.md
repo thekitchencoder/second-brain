@@ -26,7 +26,7 @@ title: "<Project Name>"
 status: active
 parents: []
 created: <today YYYY-MM-DD>
-tags: [<project-slug>]
+tags: [effort, <project-slug>]
 ```
 
 Body: one-line goal, active work items, wikilink to the context primer.
@@ -48,7 +48,7 @@ type: context-primer
 title: "<Project Name> — Context"
 status: current
 created: <today YYYY-MM-DD>
-tags: [<project-slug>, context]
+tags: [context, <project-slug>]
 ```
 
 Body: problem statement, goals, key decisions made so far, links to related prior work found in step 3.

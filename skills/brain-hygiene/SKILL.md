@@ -13,8 +13,9 @@ Use `brain_query` (or `brain_search` broadly) to enumerate notes, then call `bra
 
 **Required universal fields (all types):**
 ```
-type, title, status, created, tags
+type, title, status, tags
 ```
+Plus a date field: `created` for all types except `discovery`, which uses `captured` instead.
 
 **Valid types:** `effort`, `discovery`, `context-primer`, `spec`, `adr`, `source`, `meeting`, `daily`
 
@@ -37,7 +38,7 @@ Exceptions for `adr` notes: `id:` and `date:` (the decision date, distinct from 
 
 **Fixing missing `created`:** use `update_frontmatter` with the mtime date.
 
-**Legacy `captured:` format on discovery notes:** older notes may have a datetime value (`2024-03-01T15:04:05`) rather than date-only. This is harmless — do not migrate unless the user asks.
+**`captured:` on discovery notes:** this is the canonical date field for `type: discovery` (not `created:`). Older notes may have a datetime value (`2024-03-01T15:04:05`) rather than date-only — that format difference is harmless, do not migrate unless the user asks.
 
 **Do not** batch-fix without reading the content first.
 
