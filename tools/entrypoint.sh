@@ -8,10 +8,16 @@
 if [ -d /brain ]; then
     mkdir -p /brain/.ai
     (
+        RETRY_DELAY=30
         while true; do
             brain-index watch >> /brain/.ai/watch.log 2>&1
-            echo "$(date): brain-index watch exited, retrying in 30s..." >> /brain/.ai/watch.log
-            sleep 30
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 1 ]; then
+                echo "$(date): brain-index watch exited with error (code $EXIT_CODE) — not retrying. Check watch.log for details." >> /brain/.ai/watch.log
+                break
+            fi
+            echo "$(date): brain-index watch exited (code $EXIT_CODE), retrying in ${RETRY_DELAY}s..." >> /brain/.ai/watch.log
+            sleep "$RETRY_DELAY"
         done
     ) &
     # Start the REST API server (unless explicitly disabled)
