@@ -1,179 +1,34 @@
 #!/usr/bin/env python3
-"""brain-mcp-server: MCP server exposing brain tools to Claude Code."""
-import os
-import subprocess
-from typing import Optional
+"""brain-mcp-server: MCP server exposing brain tools to Claude Code.
 
-import numpy as np
+Supports two transports selected via BRAIN_MCP_TRANSPORT env var:
+  - stdio  (default) — standard MCP stdio transport
+  - http   — Streamable HTTP transport on BRAIN_MCP_HOST:BRAIN_MCP_PORT
+"""
+import os
 
 from lib.config import Config
-from lib.db import get_chunk_embeddings, search_chunks
-from lib.embeddings import get_embedding
+from lib.brain import (
+    _check_within_brain,
+    _format_results,
+    handle_brain_search,
+    handle_brain_related,
+    handle_brain_query,
+    handle_brain_write,
+    handle_brain_read,
+    handle_brain_templates,
+    handle_brain_create,
+    handle_brain_edit,
+    handle_brain_backlinks,
+)
 
 _cfg = Config()
 
-_PREVIEW_LENGTH = 400      # chars of content shown per result in MCP responses
-_CANDIDATE_MULTIPLIER = 10  # how many raw candidates to fetch before deduping by file in brain_related
 
-
-def _check_within_brain(path: str, brain_path: str, label: str = "path") -> Optional[str]:
-    """Return an error string if path is outside brain_path, else None."""
-    brain_real = os.path.realpath(brain_path)
-    try:
-        target_real = os.path.realpath(os.path.abspath(path))
-    except Exception:
-        return f"Invalid {label}: {path}"
-    if not (target_real == brain_real or target_real.startswith(brain_real + "/")):
-        return f"Error: {label} is outside the brain: {path}"
-    return None
-
-
-def _format_results(results: list[dict]) -> str:
-    if not results:
-        return "No results found."
-    lines = []
-    for r in results:
-        tags = ", ".join(r.get("tags") or [])
-        lines += [
-            f"### {r.get('title') or r['filepath']}",
-            f"- **File:** {r['filepath']}",
-            f"- **Type:** {r.get('type', '-')}  **Status:** {r.get('status', '-')}",
-            f"- **Created:** {r.get('created', '-')}  **Tags:** {tags or '-'}",
-            "",
-            r.get("content", "")[:_PREVIEW_LENGTH].strip(),
-            "",
-            "---",
-            "",
-        ]
-    return "\n".join(lines)
-
-
-def handle_brain_search(query: str, limit: int, db_path: str) -> str:
-    embedding = get_embedding(query)
-    results = search_chunks(db_path, embedding, limit=limit)
-    return _format_results(results)
-
-
-def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: str) -> str:
-    full_path = filepath if filepath.startswith("/") else f"{brain_path}/{filepath}"
-    vectors = get_chunk_embeddings(db_path, full_path)
-    if not vectors:
-        vectors = get_chunk_embeddings(db_path, filepath)
-    if not vectors:
-        return f"No embeddings found for {filepath}. Has it been indexed?"
-    mean_vec = list(np.mean(vectors, axis=0))
-    # Fetch more candidates than needed so deduplication by file still yields `limit` results
-    candidates = search_chunks(db_path, mean_vec, limit=limit * _CANDIDATE_MULTIPLIER)
-    seen = set()
-    deduped = []
-    for r in candidates:
-        fp = r["filepath"]
-        if fp in (full_path, filepath) or fp in seen:
-            continue
-        seen.add(fp)
-        deduped.append(r)
-        if len(deduped) == limit:
-            break
-    return _format_results(deduped)
-
-
-def handle_brain_query(
-    tag: Optional[str], status: Optional[str], note_type: Optional[str], brain_path: str
-) -> str:
-    cmd = ["zk", "list", "--quiet", "--format", "{{path}}"]
-    if tag:
-        cmd += ["--tag", tag]
-    if status:
-        cmd += ["--match", f"status:{status}"]
-    if note_type:
-        cmd += ["--match", f"type:{note_type}"]
-    try:
-        result = subprocess.run(cmd, cwd=brain_path, capture_output=True, text=True)
-    except FileNotFoundError:
-        return "zk is not installed or not on PATH. Is the container running?"
-    if result.returncode != 0:
-        return f"zk list failed: {result.stderr}"
-    files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
-    if not files:
-        return "No notes matched the query."
-    return "\n".join(files)
-
-
-def handle_brain_write(filepath: str, content: str, brain_path: str) -> str:
-    """Write content to a file inside the brain."""
-    full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
-    if err := _check_within_brain(full_path, brain_path):
-        return err
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    try:
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return f"Written: {full_path}"
-    except Exception as e:
-        return f"Error writing {filepath}: {e}"
-
-
-def handle_brain_templates(brain_path: str) -> str:
-    """List available zk templates."""
-    templates_dir = os.path.join(brain_path, ".zk", "templates")
-    if not os.path.isdir(templates_dir):
-        return "No templates directory found. Has the brain been initialised with brain-init?"
-    names = sorted(
-        os.path.splitext(f)[0]
-        for f in os.listdir(templates_dir)
-        if f.endswith(".md")
-    )
-    if not names:
-        return "No templates found."
-    return "Available templates (use these exact names with brain_create):\n" + "\n".join(f"  {n}" for n in names)
-
-
-def handle_brain_read(filepath: str, brain_path: str) -> str:
-    """Read a file from the brain and return its full content."""
-    full_path = filepath if filepath.startswith("/") else os.path.join(brain_path, filepath)
-    if err := _check_within_brain(full_path, brain_path):
-        return err
-    if not os.path.isfile(full_path):
-        return f"File not found: {filepath}"
-    try:
-        with open(full_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        return f"Error reading {filepath}: {e}"
-
-
-def handle_brain_create(template: str, title: str, brain_path: str, directory: Optional[str] = None) -> str:
-    # zk requires the .md extension on template names
-    if not template.endswith(".md"):
-        template = template + ".md"
-    # Resolve target directory — default to brain root
-    if directory:
-        target_dir = directory if directory.startswith("/") else os.path.join(brain_path, directory)
-        if err := _check_within_brain(target_dir, brain_path, label="directory"):
-            return err
-        os.makedirs(target_dir, exist_ok=True)
-    else:
-        target_dir = brain_path
-    try:
-        result = subprocess.run(
-            ["zk", "new", "--working-dir", target_dir, "--template", template, "--title", title, "--print-path"],
-            cwd=brain_path, capture_output=True, text=True
-        )
-    except FileNotFoundError:
-        return "zk is not installed or not on PATH. Is the container running?"
-    if result.returncode != 0:
-        available = handle_brain_templates(brain_path)
-        return f"zk new failed: {result.stderr.strip()}\n\n{available}"
-    return result.stdout.strip()
-
-
-def main():
-    # Import MCP server components only when starting the server
-    # so handler functions remain importable without the MCP runtime
+def _build_server():
+    """Create and configure the MCP Server with all tool definitions."""
     from mcp.server import Server
-    from mcp.server.stdio import stdio_server
     from mcp.types import Tool, TextContent
-    import asyncio
 
     server = Server("brain-mcp-server")
 
@@ -257,6 +112,53 @@ def main():
                     "required": ["filepath"],
                 },
             ),
+            Tool(
+                name="brain_edit",
+                description=(
+                    "Surgical edit on a note without full-file replacement. "
+                    "Supported ops: update_frontmatter, replace_section, append_to_section, "
+                    "prepend_to_section, replace_lines, find_replace, insert_wikilink."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filepath": {"type": "string", "description": "Path to the note to edit"},
+                        "op": {
+                            "type": "string",
+                            "enum": [
+                                "update_frontmatter", "replace_section",
+                                "append_to_section", "prepend_to_section",
+                                "replace_lines", "find_replace", "insert_wikilink",
+                            ],
+                            "description": "The edit operation to perform",
+                        },
+                        "frontmatter": {"type": "object", "description": "Key-value pairs to merge (update_frontmatter)"},
+                        "heading": {"type": "string", "description": "Section heading (replace/append/prepend_to_section)"},
+                        "body": {"type": "string", "description": "New body content for section ops"},
+                        "start_line": {"type": "integer", "description": "Start line, 1-indexed inclusive (replace_lines)"},
+                        "end_line": {"type": "integer", "description": "End line, exclusive (replace_lines)"},
+                        "replacement": {"type": "string", "description": "Replacement text (replace_lines)"},
+                        "find": {"type": "string", "description": "Text to find (find_replace)"},
+                        "replace": {"type": "string", "description": "Replacement text (find_replace)"},
+                        "regex": {"type": "boolean", "default": False, "description": "Use regex (find_replace)"},
+                        "count": {"type": "integer", "default": 0, "description": "Max replacements, 0=all (find_replace)"},
+                        "target": {"type": "string", "description": "Wikilink target (insert_wikilink)"},
+                        "context_heading": {"type": "string", "description": "Section to insert link in (insert_wikilink)"},
+                    },
+                    "required": ["filepath", "op"],
+                },
+            ),
+            Tool(
+                name="brain_backlinks",
+                description="Find all notes that contain a [[wikilink]] to the given note.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filepath": {"type": "string", "description": "Path to the note to find backlinks for"},
+                    },
+                    "required": ["filepath"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -304,16 +206,72 @@ def main():
                 filepath=arguments["filepath"],
                 brain_path=brain_path,
             )
+        elif name == "brain_edit":
+            text = handle_brain_edit(
+                filepath=arguments["filepath"],
+                op=arguments["op"],
+                brain_path=brain_path,
+                **{k: v for k, v in arguments.items() if k not in ("filepath", "op")},
+            )
+        elif name == "brain_backlinks":
+            text = handle_brain_backlinks(
+                filepath=arguments["filepath"],
+                brain_path=brain_path,
+            )
         else:
             text = f"Unknown tool: {name}"
 
         return [TextContent(type="text", text=text)]
+
+    return server
+
+
+def _run_stdio(server):
+    """Run MCP server over stdio transport."""
+    import asyncio
+    from mcp.server.stdio import stdio_server
 
     async def run():
         async with stdio_server() as streams:
             await server.run(streams[0], streams[1], server.create_initialization_options())
 
     asyncio.run(run())
+
+
+def _run_http(server):
+    """Run MCP server over Streamable HTTP transport."""
+    import contextlib
+    from collections.abc import AsyncIterator
+
+    import uvicorn
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    session_manager = StreamableHTTPSessionManager(app=server)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        async with session_manager.run():
+            yield
+
+    starlette_app = Starlette(
+        lifespan=lifespan,
+        routes=[Mount("/mcp", app=session_manager.handle_request)],
+    )
+
+    host = os.environ.get("BRAIN_MCP_HOST", "0.0.0.0")
+    port = int(os.environ.get("BRAIN_MCP_PORT", "7780"))
+    uvicorn.run(starlette_app, host=host, port=port)
+
+
+def main():
+    server = _build_server()
+    transport = os.environ.get("BRAIN_MCP_TRANSPORT", "stdio").lower()
+    if transport == "http":
+        _run_http(server)
+    else:
+        _run_stdio(server)
 
 
 if __name__ == "__main__":

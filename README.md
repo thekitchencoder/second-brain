@@ -124,20 +124,77 @@ brain-template-sync obsidian-to-zk
 brain-template-sync zk-to-obsidian
 ```
 
-## MCP server (Claude Code + Claude Desktop)
+## MCP server
+
+The brain exposes an MCP server with two transports that can run **simultaneously**:
+
+- **stdio** — on-demand via `docker exec` (always available, no config needed)
+- **HTTP** — Streamable HTTP on port 7780 (persistent daemon, started when `BRAIN_MCP_TRANSPORT=http`)
+
+Both transports share the same tools and handler logic. When you set `BRAIN_MCP_TRANSPORT=http`, the entrypoint starts the HTTP daemon as a background process alongside the indexer and REST API. The stdio transport remains available via `docker exec` regardless — it spawns a fresh process per invocation.
+
+### Recommended setup: docker compose with HTTP enabled
+
+This gives every client access from a single `docker compose up -d`:
+
+**1. Add to `.env`:**
+
+```bash
+BRAIN_MCP_TRANSPORT=http
+```
+
+**2. Expose the MCP HTTP port in `docker-compose.yml`:**
+
+```yaml
+services:
+  brain:
+    ports:
+      - "${BRAIN_API_PORT:-7779}:7779"   # REST API
+      - "7780:7780"                       # MCP HTTP
+```
+
+**3. Start the container:**
+
+```bash
+docker compose up -d
+```
+
+Now configure each client:
+
+| Client | Transport | How it connects |
+|---|---|---|
+| Claude Code | stdio | `docker exec -i brain brain-mcp-server` |
+| Claude Code | HTTP | `http://localhost:7780/mcp` |
+| Claude Desktop | stdio | `docker exec -i brain brain-mcp-server` |
+| Open WebUI | HTTP | `http://<host>:7780/mcp` |
+| LM Studio | HTTP | `http://localhost:7780/mcp` |
+| Docker MCP Toolkit | either | Gateway manages its own container |
 
 ### Claude Code
 
-Register once across all your projects (user scope):
+**Option A — HTTP (recommended when HTTP transport is enabled):**
+
+```bash
+claude mcp add --transport http --scope user brain http://localhost:7780/mcp
+```
+
+Or in `.mcp.json` (shared with your team):
+
+```json
+{
+  "mcpServers": {
+    "brain": {
+      "type": "http",
+      "url": "http://localhost:7780/mcp"
+    }
+  }
+}
+```
+
+**Option B — stdio (works without HTTP transport):**
 
 ```bash
 claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server
-```
-
-Or for a single project only (adds `.mcp.json` to the project root):
-
-```bash
-claude mcp add --scope project brain -- docker exec -i brain brain-mcp-server
 ```
 
 Verify it's registered:
@@ -146,9 +203,30 @@ Verify it's registered:
 claude mcp list
 ```
 
+HTTP is simpler — no `docker exec` subprocess management — but requires `BRAIN_MCP_TRANSPORT=http` and port 7780 exposed. The stdio option works with the default container config and needs no port mapping.
+
 ### Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to your Claude Desktop config file:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+**HTTP (recommended when HTTP transport is enabled):**
+
+```json
+{
+  "mcpServers": {
+    "brain": {
+      "type": "http",
+      "url": "http://localhost:7780/mcp"
+    }
+  }
+}
+```
+
+**stdio (works without HTTP transport):**
 
 ```json
 {
@@ -163,6 +241,114 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 The brain container must be running before starting Claude Desktop.
 
+### Open WebUI
+
+Open WebUI connects over HTTP. With the recommended setup above (HTTP enabled, port 7780 exposed):
+
+**Configure in Open WebUI:** Admin Panel → Settings → Tools → MCP Servers:
+
+- **URL:** `http://host.docker.internal:7780/mcp` (Open WebUI running on the host or in Docker for Mac/Windows)
+- **URL:** `http://brain:7780/mcp` (Open WebUI and brain on the same Docker network)
+
+**If Open WebUI and brain are in separate compose files**, create a shared network so they can reach each other by service name:
+
+```bash
+docker network create brain-net
+```
+
+Add to both compose files:
+
+```yaml
+services:
+  brain:   # or open-webui
+    networks:
+      - brain-net
+
+networks:
+  brain-net:
+    external: true
+```
+
+Then use `http://brain:7780/mcp` as the URL in Open WebUI.
+
+### LM Studio
+
+LM Studio runs on the host and connects to the brain's HTTP transport.
+
+With the recommended setup above (HTTP enabled, port 7780 exposed), add an MCP server in LM Studio:
+
+- **URL:** `http://localhost:7780/mcp`
+- **Transport:** Streamable HTTP
+
+LM Studio requires a model that supports tool/function calling (e.g. Qwen 2.5, Llama 3.x, Mistral). The model must be loaded with tool use enabled for the brain tools to appear.
+
+### Docker MCP Toolkit (Docker Desktop 4.48+)
+
+The Docker MCP Toolkit is an alternative to docker compose. It provides a centralised gateway that launches its own container from the brain image and exposes it to all AI clients at once. Use this if you only need the MCP server (no indexer or REST API).
+
+**1. Enable the MCP Toolkit:**
+
+Docker Desktop → Settings → Beta Features → Enable "Docker MCP Toolkit"
+
+**2. Create a catalog file** at `~/.docker/mcp/catalogs/brain.yaml`:
+
+```yaml
+name: brain-catalog
+displayName: Second Brain
+registry:
+  brain-mcp:
+    description: "Second Brain MCP server — search, read, write, edit notes"
+    title: "Brain MCP"
+    image: "kitchencoder/second-brain:latest"
+    command:
+      - "brain-mcp-server"
+    volumes:
+      - "{{brain-mcp.brain_path}}:/brain"
+    env:
+      - name: "BRAIN_PATH"
+        value: "/brain"
+    config:
+      - name: "brain-mcp"
+        type: "object"
+        properties:
+          brain_path:
+            type: "string"
+            description: "Path to your vault on the host"
+        required: ["brain_path"]
+```
+
+**3. Create a profile and configure it:**
+
+```bash
+docker mcp profile create --name brain
+docker mcp profile add-server brain --server-id brain-mcp
+docker mcp profile config brain --set brain-mcp.brain_path=$BRAIN_HOST_PATH
+```
+
+**4. Connect clients via the gateway:**
+
+```bash
+# stdio mode — for Claude Desktop / Claude Code
+docker mcp gateway run --profile brain
+
+# Streaming mode — for Open WebUI / LM Studio / remote clients
+docker mcp gateway run --profile brain --transport streaming --port 8811
+```
+
+For Claude Desktop, the easiest path is Docker Desktop → MCP Toolkit → MCP Clients → click "Connect" next to Claude Desktop.
+
+> **Note:** The Docker MCP gateway launches its own containers — it does not connect to your existing `docker compose` services. The gateway container runs only the MCP server, not the indexer or REST API. For the full stack, use docker compose with HTTP transport (the recommended setup above).
+
+### HTTP transport reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `BRAIN_MCP_TRANSPORT` | `stdio` | Set to `http` to start the HTTP daemon in the entrypoint |
+| `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for HTTP mode |
+| `BRAIN_MCP_PORT` | `7780` | Port for HTTP mode |
+
+The HTTP endpoint is `http://<host>:<port>/mcp` and implements the MCP Streamable HTTP protocol (JSON-RPC over HTTP POST with SSE responses).
+
 ### Available tools
 
 | Tool | Description |
@@ -174,6 +360,8 @@ The brain container must be running before starting Claude Desktop.
 | `brain_create(template, title, directory?)` | Create a note stub from a template in an optional subdirectory, returns filepath |
 | `brain_templates()` | List available templates — call before `brain_create` |
 | `brain_related(filepath, limit?)` | Find semantically related notes |
+| `brain_edit(filepath, op, ...)` | Surgical edit — update frontmatter, replace/append/prepend sections, find-replace, line ranges, insert wikilinks |
+| `brain_backlinks(filepath)` | Find all notes that link to a given note via `[[wikilinks]]` |
 
 ## Skills
 
@@ -240,6 +428,10 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `CHAT_BASE_URL` | Docker Model Runner | Chat completions endpoint |
 | `CHAT_MODEL` | `llama3.2` | Chat model name |
 | `OPENAI_API_KEY` | `local` | API key (any non-empty string for local endpoints) |
+| `BRAIN_MCP_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
+| `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for MCP HTTP mode |
+| `BRAIN_MCP_PORT` | `7780` | Port for MCP HTTP mode |
+| `BRAIN_API_PORT` | `7779` | Port for the REST API |
 
 ### Using Ollama instead of Docker Model Runner
 

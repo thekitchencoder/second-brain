@@ -6,7 +6,6 @@ functions, and adds structured responses + surgical edit support for a
 web UI with wiki-link navigation.
 """
 import os
-import re
 from enum import Enum
 from typing import Optional
 
@@ -25,8 +24,11 @@ from lib.edit import (
     replace_section,
     update_frontmatter,
 )
-from brain_mcp_server import (
+from lib.brain import (
     _check_within_brain,
+    _relative_path,
+    extract_wikilinks,
+    find_backlinks,
     handle_brain_create,
     handle_brain_query,
     handle_brain_related,
@@ -35,7 +37,6 @@ from brain_mcp_server import (
 )
 
 _cfg = Config()
-_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 
 app = FastAPI(
     title="Second Brain API",
@@ -78,21 +79,7 @@ def _write_file(full_path: str, content: str) -> None:
 
 def _relative(full_path: str) -> str:
     """Return path relative to brain root."""
-    bp = _cfg.brain_path
-    if full_path.startswith(bp):
-        return full_path[len(bp):].lstrip("/")
-    return full_path
-
-
-def _extract_wikilinks(text: str) -> list[dict]:
-    """Extract [[wikilinks]] from text. Returns list of {target, alias?}."""
-    links = []
-    for m in _WIKILINK_RE.finditer(text):
-        link: dict = {"target": m.group(1).strip()}
-        if m.group(2):
-            link["alias"] = m.group(2).strip()
-        links.append(link)
-    return links
+    return _relative_path(full_path, _cfg.brain_path)
 
 
 def _parse_note(filepath: str, raw: str) -> dict:
@@ -102,41 +89,13 @@ def _parse_note(filepath: str, raw: str) -> dict:
         "filepath": filepath,
         "frontmatter": meta,
         "body": body,
-        "wikilinks": _extract_wikilinks(raw),
+        "wikilinks": extract_wikilinks(raw),
     }
 
 
 def _find_backlinks(filepath: str) -> list[dict]:
     """Walk the brain and find notes that contain a [[wikilink]] to filepath."""
-    bp = _cfg.brain_path
-    rel = _relative(filepath)
-    stem = os.path.splitext(os.path.basename(rel))[0]
-    # Match links to either the full relative path (minus .md) or just the stem
-    targets = {rel, os.path.splitext(rel)[0], stem}
-    backlinks = []
-    for root, dirs, files in os.walk(bp):
-        # Skip hidden directories
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        for fname in files:
-            if not fname.endswith(".md"):
-                continue
-            fpath = os.path.join(root, fname)
-            if os.path.realpath(fpath) == os.path.realpath(filepath):
-                continue
-            try:
-                content = open(fpath, "r", encoding="utf-8").read()
-            except Exception:
-                continue
-            for m in _WIKILINK_RE.finditer(content):
-                link_target = m.group(1).strip()
-                if link_target in targets:
-                    meta, _ = extract_frontmatter(content)
-                    backlinks.append({
-                        "filepath": _relative(fpath),
-                        "title": meta.get("title", fname),
-                    })
-                    break
-    return backlinks
+    return find_backlinks(filepath, _cfg.brain_path)
 
 
 # ── Request / Response models ────────────────────────────────────────
