@@ -342,6 +342,8 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         return f"Error: file not found: {filepath}"
 
     rel = _relative_path(full_path, brain_path)
+    if rel.startswith("..") or rel.startswith("/"):
+        return f"Error: resolved path is outside the brain: {filepath}"
     trash_root = os.path.join(brain_path, ".trash")
     dest_path = os.path.join(trash_root, rel)
     origin_sidecar: Optional[str] = None
@@ -399,6 +401,8 @@ def handle_brain_restore(trash_path: str, brain_path: str) -> str:
     else:
         original_rel = normalized[len(".trash/"):]
 
+    if original_rel.startswith("..") or original_rel.startswith("/"):
+        return f"Error: original path in sidecar is invalid: {original_rel}"
     dest_path = os.path.join(brain_path, original_rel)
     if os.path.exists(dest_path):
         return (

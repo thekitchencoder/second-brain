@@ -368,6 +368,11 @@ def test_trash_rejects_outside_brain(tmp_path):
     assert "Error" in result or "outside" in result.lower()
 
 
+def test_trash_file_not_found_returns_error(brain_with_note):
+    result = handle_brain_trash("Cards/nonexistent.md", str(brain_with_note), db_path=":memory:")
+    assert "Error" in result
+
+
 def test_trash_collision_creates_datestamp_suffix_and_origin_sidecar(brain_with_note):
     # Pre-create a collision in trash
     trash_dest = brain_with_note / ".trash" / "Cards"
