@@ -302,6 +302,22 @@ def test_list_notes_empty(client):
     assert resp.json() == []
 
 
+def test_list_notes_invalid_param_returns_400(client):
+    """Validation errors from handle_brain_query must surface as HTTP 400, not 200 with error text."""
+    with patch("brain_api.handle_brain_query", return_value="Invalid tag: must contain only letters, digits, hyphens and underscores"):
+        resp = client.get("/api/notes", params={"tag": "bad tag!"})
+    assert resp.status_code == 400
+    assert "Invalid tag" in resp.json()["detail"]
+
+
+def test_create_note_traversal_template_returns_400(client):
+    """Template path traversal must return HTTP 400, not 200 success."""
+    with patch("brain_api.handle_brain_create", return_value="Invalid template name: must be a bare filename with no path separators"):
+        resp = client.post("/api/notes", json={"template": "../../../etc/passwd", "title": "Hack"})
+    assert resp.status_code == 400
+    assert "Invalid template name" in resp.json()["detail"]
+
+
 # ── Search ──────────────────────────────────────────────────────────
 
 

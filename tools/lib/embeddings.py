@@ -43,7 +43,7 @@ def get_embedding(text: str, max_chars: int = 1500) -> list[float]:
         if "too large" in str(e) and max_chars > 100:
             print(f"Warning: input too large, retrying with {max_chars // 2} chars", file=sys.stderr)
             return get_embedding(text, max_chars // 2)
-        raise
+        raise EmbeddingError(str(e)) from e
     except NotFoundError:
         raise EmbeddingError(
             f"Embedding model '{_get_cfg().embedding_model}' not found at {_get_cfg().embedding_base_url}. "
