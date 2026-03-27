@@ -35,6 +35,8 @@ from lib.brain import (
     handle_brain_related,
     handle_brain_search,
     handle_brain_templates,
+    handle_brain_trash,
+    handle_brain_restore,
 )
 
 _cfg = Config()
@@ -355,6 +357,34 @@ def create_note(req: CreateRequest):
     if not result.endswith(".md"):
         raise HTTPException(400, result)
     return EditResponse(filepath=_relative(result), success=True, detail=f"Created: {result}")
+
+
+@app.post("/api/notes/{filepath:path}/trash", response_model=EditResponse)
+def trash_note(filepath: str):
+    """Move a note to .trash/ and remove from the search index."""
+    full = _resolve(filepath)
+    if not os.path.isfile(full):
+        raise HTTPException(status_code=404, detail=f"File not found: {filepath}")
+    result = handle_brain_trash(
+        filepath=_relative(full),
+        brain_path=_cfg.brain_path,
+        db_path=_cfg.db_path,
+    )
+    if result.startswith("Error"):
+        raise HTTPException(status_code=400, detail=result)
+    return EditResponse(filepath=filepath, success=True, detail=result)
+
+
+@app.post("/api/notes/{filepath:path}/restore", response_model=EditResponse)
+def restore_note(filepath: str):
+    """Restore a note from .trash/ back to its original location."""
+    result = handle_brain_restore(
+        trash_path=filepath,
+        brain_path=_cfg.brain_path,
+    )
+    if result.startswith("Error"):
+        raise HTTPException(status_code=400, detail=result)
+    return EditResponse(filepath=filepath, success=True, detail=result)
 
 
 @app.get("/api/templates", response_model=list[str])
