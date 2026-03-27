@@ -155,14 +155,11 @@ def delete_file_chunks(db_path: str, filepath: str) -> None:
     """Delete all chunks and their embeddings for a given filepath."""
     conn = _connect(db_path)
     try:
-        chunk_ids = [
-            row[0] for row in conn.execute(
-                "SELECT id FROM chunks WHERE filepath=?", (filepath,)
-            ).fetchall()
-        ]
-        if chunk_ids:
-            placeholders = ",".join("?" * len(chunk_ids))
-            conn.execute(f"DELETE FROM embeddings WHERE rowid IN ({placeholders})", chunk_ids)
+        conn.execute("BEGIN")
+        conn.execute(
+            "DELETE FROM embeddings WHERE rowid IN (SELECT id FROM chunks WHERE filepath=?)",
+            (filepath,)
+        )
         conn.execute("DELETE FROM chunks WHERE filepath=?", (filepath,))
         conn.commit()
     finally:

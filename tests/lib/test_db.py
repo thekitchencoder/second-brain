@@ -2,7 +2,7 @@
 import json
 import sqlite3
 import pytest
-from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings, delete_file_chunks
+from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings, delete_file_chunks, _connect
 
 
 @pytest.fixture
@@ -111,7 +111,6 @@ def test_delete_file_chunks_removes_chunks_and_embeddings(db_path):
 
     delete_file_chunks(db_path, "Cards/foo.md")
 
-    import sqlite3
     conn = sqlite3.connect(db_path)
     chunk_rows = conn.execute(
         "SELECT COUNT(*) FROM chunks WHERE filepath='Cards/foo.md'"
@@ -119,7 +118,6 @@ def test_delete_file_chunks_removes_chunks_and_embeddings(db_path):
     conn.close()
     assert chunk_rows == 0
 
-    from lib.db import _connect
     vec_conn = _connect(db_path)
     try:
         emb_rows = vec_conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
@@ -137,7 +135,6 @@ def test_delete_file_chunks_does_not_affect_other_filepaths(db_path):
 
     delete_file_chunks(db_path, "Cards/foo.md")
 
-    import sqlite3
     conn = sqlite3.connect(db_path)
     bar_rows = conn.execute(
         "SELECT COUNT(*) FROM chunks WHERE filepath='Cards/bar.md'"
