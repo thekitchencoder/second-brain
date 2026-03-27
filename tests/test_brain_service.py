@@ -1,0 +1,231 @@
+# tests/test_brain_service.py
+"""Tests for lib.brain — shared service layer (edit, backlinks, helpers)."""
+import os
+import sys
+import textwrap
+
+import pytest
+from unittest.mock import MagicMock
+
+# Stub native-only deps
+if "sqlite_vec" not in sys.modules:
+    sys.modules["sqlite_vec"] = MagicMock()
+if "openai" not in sys.modules:
+    sys.modules["openai"] = MagicMock()
+
+from lib.brain import (
+    _check_within_brain,
+    _format_results,
+    _relative_path,
+    _resolve_path,
+    extract_wikilinks,
+    find_backlinks,
+    handle_brain_backlinks,
+    handle_brain_edit,
+    handle_brain_read,
+    handle_brain_write,
+)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def test_check_within_brain_ok(tmp_path):
+    assert _check_within_brain(str(tmp_path / "note.md"), str(tmp_path)) is None
+
+
+def test_check_within_brain_outside(tmp_path):
+    result = _check_within_brain("/etc/passwd", str(tmp_path))
+    assert "outside the brain" in result
+
+
+def test_resolve_path_relative(tmp_path):
+    assert _resolve_path("foo.md", str(tmp_path)) == os.path.join(str(tmp_path), "foo.md")
+
+
+def test_resolve_path_absolute(tmp_path):
+    p = str(tmp_path / "note.md")
+    assert _resolve_path(p, str(tmp_path)) == p
+
+
+def test_relative_path(tmp_path):
+    assert _relative_path(str(tmp_path / "sub" / "note.md"), str(tmp_path)) == "sub/note.md"
+
+
+def test_format_results_empty():
+    assert _format_results([]) == "No results found."
+
+
+def test_extract_wikilinks():
+    text = "See [[foo]] and [[bar|display text]]."
+    links = extract_wikilinks(text)
+    assert len(links) == 2
+    assert links[0] == {"target": "foo"}
+    assert links[1] == {"target": "bar", "alias": "display text"}
+
+
+# ── brain_edit ───────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def sample_note(tmp_path):
+    note = tmp_path / "note.md"
+    note.write_text(textwrap.dedent("""\
+        ---
+        title: Test
+        status: draft
+        ---
+
+        # Overview
+
+        Some content here.
+
+        # Tasks
+
+        - Task one
+        - Task two
+
+        # References
+
+        - [[existing-link]]
+    """))
+    return str(note), str(tmp_path)
+
+
+def test_edit_update_frontmatter(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "update_frontmatter", brain_path, frontmatter={"status": "current", "effort": "q1"})
+    assert "Updated frontmatter" in result
+    content = open(filepath).read()
+    assert "status: current" in content
+    assert "effort: q1" in content
+
+
+def test_edit_replace_section(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "replace_section", brain_path, heading="Tasks", body="- All done!")
+    assert "replace_section: Tasks" in result
+    content = open(filepath).read()
+    assert "- All done!" in content
+    assert "- Task one" not in content
+
+
+def test_edit_append_to_section(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "append_to_section", brain_path, heading="Tasks", body="- Task three")
+    assert "append_to_section" in result
+    content = open(filepath).read()
+    assert "- Task three" in content
+    assert "- Task two" in content
+
+
+def test_edit_prepend_to_section(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "prepend_to_section", brain_path, heading="Tasks", body="- Task zero")
+    assert "prepend_to_section" in result
+    content = open(filepath).read()
+    assert content.index("- Task zero") < content.index("- Task one")
+
+
+def test_edit_find_replace(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "find_replace", brain_path, find="Some content", replace="Updated content")
+    assert "1 occurrence" in result
+    assert "Updated content" in open(filepath).read()
+
+
+def test_edit_replace_lines(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "replace_lines", brain_path, start_line=8, end_line=9, replacement="Replaced line.")
+    assert "Replaced lines" in result
+    assert "Replaced line." in open(filepath).read()
+
+
+def test_edit_insert_wikilink(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "insert_wikilink", brain_path, target="new-note", context_heading="References")
+    assert "Inserted [[new-note]]" in result
+    assert "[[new-note]]" in open(filepath).read()
+
+
+def test_edit_insert_wikilink_duplicate(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "insert_wikilink", brain_path, target="existing-link")
+    assert "already present" in result
+
+
+def test_edit_section_not_found(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "replace_section", brain_path, heading="Nonexistent", body="x")
+    assert "Section not found" in result
+
+
+def test_edit_unknown_op(sample_note):
+    filepath, brain_path = sample_note
+    result = handle_brain_edit(filepath, "unknown_op", brain_path)
+    assert "Unknown edit operation" in result
+
+
+def test_edit_file_not_found(tmp_path):
+    result = handle_brain_edit("nonexistent.md", "find_replace", str(tmp_path), find="x", replace="y")
+    assert "File not found" in result
+
+
+def test_edit_outside_brain(tmp_path):
+    result = handle_brain_edit("/etc/passwd", "find_replace", str(tmp_path), find="x", replace="y")
+    assert "outside the brain" in result
+
+
+def test_edit_missing_required_fields(sample_note):
+    filepath, brain_path = sample_note
+    assert "required" in handle_brain_edit(filepath, "update_frontmatter", brain_path).lower()
+    assert "required" in handle_brain_edit(filepath, "replace_section", brain_path).lower()
+    assert "required" in handle_brain_edit(filepath, "replace_lines", brain_path).lower()
+    assert "required" in handle_brain_edit(filepath, "find_replace", brain_path).lower()
+    assert "required" in handle_brain_edit(filepath, "insert_wikilink", brain_path).lower()
+
+
+# ── brain_backlinks ──────────────────────────────────────────────────
+
+
+def test_backlinks_found(tmp_path):
+    target = tmp_path / "target.md"
+    target.write_text("---\ntitle: Target\n---\n\nHello.")
+    linker = tmp_path / "linker.md"
+    linker.write_text("---\ntitle: Linker\n---\n\nSee [[target]] for details.")
+
+    result = handle_brain_backlinks("target.md", str(tmp_path))
+    assert "Linker" in result
+    assert "linker.md" in result
+
+
+def test_backlinks_none(tmp_path):
+    target = tmp_path / "target.md"
+    target.write_text("---\ntitle: Target\n---\n\nHello.")
+
+    result = handle_brain_backlinks("target.md", str(tmp_path))
+    assert "No backlinks" in result
+
+
+def test_find_backlinks_returns_dicts(tmp_path):
+    target = tmp_path / "target.md"
+    target.write_text("---\ntitle: Target\n---\n\nHello.")
+    linker = tmp_path / "sub" / "linker.md"
+    linker.parent.mkdir()
+    linker.write_text("---\ntitle: Sub Linker\n---\n\nSee [[target]].")
+
+    backlinks = find_backlinks(str(target), str(tmp_path))
+    assert len(backlinks) == 1
+    assert backlinks[0]["title"] == "Sub Linker"
+    assert backlinks[0]["filepath"] == "sub/linker.md"
+
+
+def test_backlinks_skips_hidden_dirs(tmp_path):
+    target = tmp_path / "target.md"
+    target.write_text("---\ntitle: Target\n---\n\nHello.")
+    hidden = tmp_path / ".hidden" / "note.md"
+    hidden.parent.mkdir()
+    hidden.write_text("---\ntitle: Hidden\n---\n\n[[target]]")
+
+    backlinks = find_backlinks(str(target), str(tmp_path))
+    assert len(backlinks) == 0
