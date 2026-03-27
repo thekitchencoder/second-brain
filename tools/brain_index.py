@@ -151,7 +151,7 @@ def watch_brain(brain_path: str, db_path: str) -> None:
     # without polling the watcher runs but never fires.
     for changes in watch(brain_path, force_polling=True):
         for change_type, path in changes:
-            if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts:
+            if path.endswith(".md") and ".ai" not in Path(path).parts and "templates" not in Path(path).parts and ".trash" not in Path(path).parts:
                 if os.path.isfile(path):
                     print(f"Reindexing {path}", file=sys.stderr)
                     index_file(path, db_path)
