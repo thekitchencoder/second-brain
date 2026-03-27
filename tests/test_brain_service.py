@@ -25,7 +25,9 @@ from lib.brain import (
     handle_brain_edit,
     handle_brain_query,
     handle_brain_read,
+    handle_brain_restore,
     handle_brain_search,
+    handle_brain_trash,
     handle_brain_write,
 )
 from lib.embeddings import EmbeddingError
@@ -304,3 +306,124 @@ def test_brain_create_accepts_valid_template(tmp_path):
     # Valid name — should not fail on input validation (may fail on zk not found)
     result = handle_brain_create("effort", "My Project", str(tmp_path))
     assert "invalid" not in result.lower() or "zk" in result.lower()
+
+
+# ── brain_trash ──────────────────────────────────────────────────────
+
+@pytest.fixture
+def brain_with_note(tmp_path):
+    note = tmp_path / "Cards" / "foo.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text("---\ntitle: Foo\n---\n\nHello.")
+    return tmp_path
+
+
+def test_trash_moves_file_to_trash_dir(brain_with_note):
+    with patch("lib.brain.delete_file_chunks"):
+        result = handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=":memory:"
+        )
+    assert not (brain_with_note / "Cards" / "foo.md").exists()
+    assert (brain_with_note / ".trash" / "Cards" / "foo.md").exists()
+    assert "Trashed" in result
+
+
+def test_trash_cleans_db(brain_with_note):
+    with patch("lib.brain.delete_file_chunks") as mock_del:
+        handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path="/tmp/test.db"
+        )
+    mock_del.assert_called_once()
+
+
+def test_trash_returns_backlink_info(brain_with_note):
+    linker = brain_with_note / "Efforts" / "baz.md"
+    linker.parent.mkdir(parents=True, exist_ok=True)
+    linker.write_text("---\ntitle: Baz\n---\n\nSee [[foo]].")
+    with patch("lib.brain.delete_file_chunks"):
+        result = handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=":memory:"
+        )
+    assert "baz.md" in result or "Baz" in result
+    assert "orphaned" in result.lower()
+
+
+def test_trash_no_backlinks_reports_none(brain_with_note):
+    with patch("lib.brain.delete_file_chunks"):
+        result = handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=":memory:"
+        )
+    assert "No backlinks" in result
+
+
+def test_trash_rejects_non_md(brain_with_note):
+    txt = brain_with_note / "readme.txt"
+    txt.write_text("hello")
+    result = handle_brain_trash("readme.txt", str(brain_with_note), db_path=":memory:")
+    assert "Error" in result
+
+
+def test_trash_rejects_outside_brain(tmp_path):
+    result = handle_brain_trash("/etc/passwd", str(tmp_path), db_path=":memory:")
+    assert "Error" in result or "outside" in result.lower()
+
+
+def test_trash_collision_creates_datestamp_suffix_and_origin_sidecar(brain_with_note):
+    # Pre-create a collision in trash
+    trash_dest = brain_with_note / ".trash" / "Cards"
+    trash_dest.mkdir(parents=True, exist_ok=True)
+    (trash_dest / "foo.md").write_text("old trash")
+    with patch("lib.brain.delete_file_chunks"):
+        handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=":memory:"
+        )
+    trash_files = list(trash_dest.glob("foo.*.md"))
+    assert len(trash_files) == 1
+    origin_file = trash_files[0].with_suffix(".origin")
+    assert origin_file.exists()
+    assert "Cards/foo.md" in origin_file.read_text()
+
+
+# ── brain_restore ─────────────────────────────────────────────────────
+
+def test_restore_moves_file_back(brain_with_note):
+    with patch("lib.brain.delete_file_chunks"):
+        handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=":memory:"
+        )
+    result = handle_brain_restore(".trash/Cards/foo.md", str(brain_with_note))
+    assert (brain_with_note / "Cards" / "foo.md").exists()
+    assert "Restored" in result
+
+
+def test_restore_with_origin_sidecar(brain_with_note):
+    trash_dir = brain_with_note / ".trash" / "Cards"
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    suffixed = trash_dir / "foo.20260327-143022.md"
+    suffixed.write_text("---\ntitle: Foo\n---\n\nHello.")
+    origin = trash_dir / "foo.20260327-143022.origin"
+    origin.write_text("Cards/foo.md")
+    # Remove original so restore can place it back
+    (brain_with_note / "Cards" / "foo.md").unlink()
+    result = handle_brain_restore(
+        ".trash/Cards/foo.20260327-143022.md", str(brain_with_note)
+    )
+    assert (brain_with_note / "Cards" / "foo.md").exists()
+    assert not origin.exists()
+    assert "Restored" in result
+
+
+def test_restore_conflict_returns_error(brain_with_note):
+    with patch("lib.brain.delete_file_chunks"):
+        handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=":memory:"
+        )
+    # Recreate the file at original location to cause conflict
+    (brain_with_note / "Cards" / "foo.md").write_text("conflict")
+    result = handle_brain_restore(".trash/Cards/foo.md", str(brain_with_note))
+    assert "Error" in result
+
+
+def test_restore_rejects_path_not_in_trash(brain_with_note):
+    result = handle_brain_restore("Cards/foo.md", str(brain_with_note))
+    assert "Error" in result
