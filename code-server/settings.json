@@ -33,5 +33,8 @@
   "terminal.integrated.defaultProfile.linux": "zsh",
   "extensions.autoUpdate": false,
   "extensions.autoCheckUpdates": false,
-  "update.mode": "none"
+  "update.mode": "none",
+  "pasteImage.path": "${currentFileDir}/assets",
+  "pasteImage.namePrefix": "",
+  "pasteImage.insertPattern": "![$fileName](assets/$fileName)"
 }
