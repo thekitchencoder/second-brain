@@ -268,6 +268,23 @@ def test_list_templates(client):
     assert "project" in data
 
 
+def test_list_templates_returns_clean_list(tmp_path, monkeypatch, brain_env):
+    """list_templates endpoint must return plain names, not parsed formatted string."""
+    import brain_api as _brain_api
+    templates_dir = tmp_path / ".zk" / "templates"
+    templates_dir.mkdir(parents=True)
+    (templates_dir / "effort.md").write_text("")
+    (templates_dir / "discovery.md").write_text("")
+    monkeypatch.setattr(_brain_api, "_cfg", type("C", (), {"brain_path": str(tmp_path)})())
+
+    result = _brain_api.list_templates()
+    assert isinstance(result, list)
+    assert "effort" in result
+    assert "discovery" in result
+    assert not any("Available" in item for item in result)
+    assert not any(item.startswith(" ") for item in result)
+
+
 # ── List / Query ────────────────────────────────────────────────────
 
 

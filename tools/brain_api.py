@@ -26,6 +26,7 @@ from lib.edit import (
 )
 from lib.brain import (
     _check_within_brain,
+    _list_template_names,
     _relative_path,
     extract_wikilinks,
     find_backlinks,
@@ -357,15 +358,7 @@ def create_note(req: CreateRequest):
 @app.get("/api/templates", response_model=list[str])
 def list_templates():
     """List available note templates."""
-    result = handle_brain_templates(brain_path=_cfg.brain_path)
-    if "No templates" in result:
-        return []
-    # Parse the formatted output from the MCP handler
-    return [
-        line.strip()
-        for line in result.splitlines()
-        if line.strip() and not line.startswith("Available")
-    ]
+    return _list_template_names(brain_path=_cfg.brain_path)
 
 
 def main():

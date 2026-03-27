@@ -175,17 +175,25 @@ def handle_brain_read(filepath: str, brain_path: str) -> str:
         return f"Error reading {filepath}: {e}"
 
 
-def handle_brain_templates(brain_path: str) -> str:
-    """List available zk templates."""
+def _list_template_names(brain_path: str) -> list[str]:
+    """Return sorted list of template names (without .md extension)."""
     templates_dir = os.path.join(brain_path, ".zk", "templates")
     if not os.path.isdir(templates_dir):
-        return "No templates directory found. Has the brain been initialised with brain-init?"
-    names = sorted(
+        return []
+    return sorted(
         os.path.splitext(f)[0]
         for f in os.listdir(templates_dir)
         if f.endswith(".md")
     )
+
+
+def handle_brain_templates(brain_path: str) -> str:
+    """List available zk templates."""
+    names = _list_template_names(brain_path)
     if not names:
+        templates_dir = os.path.join(brain_path, ".zk", "templates")
+        if not os.path.isdir(templates_dir):
+            return "No templates directory found. Has the brain been initialised with brain-init?"
         return "No templates found."
     return "Available templates (use these exact names with brain_create):\n" + "\n".join(
         f"  {n}" for n in names
