@@ -18,5 +18,9 @@ if [ -d /brain ]; then
     if [ "${BRAIN_API_DISABLED:-}" != "1" ]; then
         brain-api >> /brain/.ai/api.log 2>&1 &
     fi
+    # Optionally start the MCP server in HTTP mode for remote MCP clients
+    if [ "${BRAIN_MCP_TRANSPORT:-}" = "http" ]; then
+        BRAIN_MCP_TRANSPORT=http brain-mcp-server >> /brain/.ai/mcp-http.log 2>&1 &
+    fi
 fi
 exec "$@"
