@@ -30,5 +30,8 @@
   "explorer.confirmDelete": false,
   "explorer.confirmDragAndDrop": false,
   "chat.disableAIFeatures": true,
-  "terminal.integrated.defaultProfile.linux": "zsh"
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "update.mode": "none"
 }
