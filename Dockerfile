@@ -94,7 +94,7 @@ EXPOSE 7779 8080
 RUN echo '{"projects":{"/brain":{"allowedTools":[],"hasTrustDialogAccepted":true}}}' \
     > /home/coder/.claude.json \
     && mkdir -p /home/coder/.claude \
-    && echo '{"model":"gpt-oss:32k"}' > /home/coder/.claude/settings.json \
+    && echo '{"model":"qwen3-coder:latest"}' > /home/coder/.claude/settings.json \
     && chown -R coder:coder /home/coder/.claude.json /home/coder/.claude
 
 # VS Code extensions — must run as coder user
