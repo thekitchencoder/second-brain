@@ -28,5 +28,5 @@
   "workbench.colorTheme": "Default Dark Modern",
   "explorer.confirmDelete": false,
   "explorer.confirmDragAndDrop": false,
-  "chat.enabled": false
+  "chat.disableAIFeatures": true
 }
