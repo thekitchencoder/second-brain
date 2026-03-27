@@ -40,13 +40,12 @@ Only ask about type if genuinely ambiguous.
 
 Call `brain_create(template, title, directory)`. Infer directory from context:
 
-- Known project slug → `Projects/<slug>/`
 - Known effort → `Efforts/<slug>/`
 - Atomic idea or unclear → `Cards/`
 
 Then `brain_write(filepath, content)` with the captured content.
 
-Tell the user: "Draft at `Projects/jobs-guarantee/automation-idea.md` — let me know when you've finished editing."
+Tell the user: "Draft at `Efforts/jobs-guarantee/automation-idea.md` — let me know when you've finished editing."
 
 ### 4. Wait
 
@@ -56,16 +55,14 @@ Do not proceed until the user signals they are done editing.
 
 After the user confirms done:
 
-1. Read the updated note with the `Read` tool
-2. Run `brain_search(title)` and `brain_related(filepath)` in parallel
-3. Patch `[[wikilinks]]` into the note body for top matches
-4. Find the nearest `_index.md` via Glob (project dir first, then effort dir, then parent)
-5. Add a reference line to that index using `Edit`
-6. Report: "Linked to 3 notes, added reference to `Projects/jobs-guarantee/_index.md`"
+1. Run `brain_search(title)` and `brain_related(filepath)` in parallel
+2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related")` — idempotent, safe to call without pre-checking
+3. If the note has a non-empty `effort:` field value: `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
+4. Report: "Linked to 3 notes, added reference to `Efforts/jobs-guarantee.md`"
 
 ## Rules
 
-- **No folder invention.** Only: Atlas, Efforts, Projects, Cards, Calendar, Sources
+- **No folder invention.** Only: Atlas, Efforts, Cards, Calendar, Sources
 - **Search before creating.** Duplicates are worse than updates.
 - **Write only what was captured.** No elaboration, no invented content.
 - **`status: raw` on discovery notes** — never set it to anything else during capture.
@@ -78,4 +75,4 @@ After the user confirms done:
 | Creating without searching first | Always run `brain_search` before `brain_create` |
 | Placing notes in the brain root | Always pass a `directory` to `brain_create` |
 | Wiring before the user is done | Wait for explicit confirmation before step 5 |
-| Patching `_index.md` in the wrong directory | Check project dir first, then effort, then parent |
+| Wiring to a non-existent effort note | Glob for `Efforts/<slug>.md` before patching |

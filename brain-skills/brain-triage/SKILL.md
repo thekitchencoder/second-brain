@@ -41,15 +41,15 @@ For each note:
 ### 3. Act on the decision
 
 **Promote:**
-- Update `status: raw` → `status: draft` via `Edit`
+- `brain_edit(op=update_frontmatter, filepath=..., frontmatter={"status": "draft"})`
 - Check if the note is in the right folder (infer from type/tags):
-  - `type: discovery` with a project tag → offer to move to `Projects/<slug>/`
+  - `type: discovery` with an effort tag → offer to move to `Efforts/<slug>/`
   - Generic idea → `Cards/` is fine
-- Run `brain_related(filepath)` and add top `[[wikilinks]]` if none exist
-- Find nearest `_index.md` and add a reference line
+- Run `brain_related(filepath)` and for each top match: `brain_edit(op=insert_wikilink, filepath=<note being triaged>, target=<title>, context_heading="Related Notes")`
+- If the note has a non-empty `effort:` field value: `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
 
 **Archive:**
-- Update `status: raw` → `status: archived` via `Edit`
+- `brain_edit(op=update_frontmatter, filepath=..., frontmatter={"status": "archived"})`
 
 **Defer:**
 - No changes — move to next note

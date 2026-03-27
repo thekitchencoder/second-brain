@@ -1,9 +1,6 @@
 ---
 type: context-primer
 title: "{{title}}"
-project: ""
-scope: ""
-technical-level: conceptual
 status: current
 created: {{format-date now "2006-01-02"}}
 tags: [context]

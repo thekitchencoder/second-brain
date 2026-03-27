@@ -20,9 +20,8 @@ Assume `brain-init` has already been run. If `brain_templates` returns an error,
 The vault uses an ACE-aligned hierarchy. Create these top-level folders if they don't exist (use `brain_write` to create a placeholder `.keep` file in each if needed):
 
 ```
-Atlas/        — Maps of content, MOCs, evergreen reference notes
-Efforts/      — Active ongoing work (non-project things you keep returning to)
-Projects/     — Discrete software projects, each with its own subfolder
+Atlas/        — Config, dashboards, evergreen reference notes
+Efforts/      — All active work: projects, areas, ongoing focus
 Cards/        — Atomic evergreen notes, flat, no hierarchy
 Calendar/     — Daily notes and time-anchored content
 Sources/      — Books, articles, reference material
@@ -36,13 +35,13 @@ The following templates are available via `brain_create`. Always call `brain_tem
 
 | Template | Use for | Key frontmatter to fill |
 |---|---|---|
-| `discovery` | Capturing a raw idea — the inbox | `effort`, `project` (optional at capture) |
-| `context-primer` | Background docs for Claude sessions | `project`, `scope`, `technical-level` |
-| `effort` | An ongoing area of work (creates an `_index.md`) | `scope`, `tags` |
-| `project` | A discrete software project manifest | `id`, `stack`, `repo`, `effort` |
-| `spec` | A feature specification | `project`, `priority`, `complexity`, `delegate` |
-| `adr` | An architecture decision record | `project`, `id` (sequential: ADR-001) |
-| `meeting` | Meeting notes | `attendees`, `project` |
+| `discovery` | Capturing a raw idea — the inbox | `effort` (optional at capture) |
+| `context-primer` | Background docs for Claude sessions | no extras beyond universal fields |
+| `doc` | Authored deliverable — architecture doc, RFC, design doc | `effort`; optional `published_url` when pushed externally |
+| `effort` | Any project or ongoing area of work | `parents` (empty list if top-level) |
+| `spec` | A feature specification | `effort` |
+| `adr` | An architecture decision record | `effort`, `id` (sequential: ADR-001) |
+| `meeting` | Meeting notes | `attendees`, `effort` |
 | `daily` | Daily note | no extras needed |
 
 ## Setup sequence
@@ -58,11 +57,12 @@ Ask:
 
 ### Step 2 — Create the first Effort
 
-An Effort is an ongoing area of focus that isn't a discrete project. It gets its own subfolder under `Efforts/` with an `_index.md` as its home.
+An Effort covers any active area of work — a software project, an ongoing focus, or a personal initiative. It is a single flat file at `Efforts/<slug>.md`. Supporting notes (context-primers, specs, discoveries) live in `Efforts/<slug>/` subfolders.
 
 - Ask for the effort name and a one-line goal
-- Use `brain_create` with the `effort` template, placing it in `Efforts/<effort-slug>/`
+- Use `brain_create` with the `effort` template, placing it in `Efforts/` (not a subfolder — the file itself is `Efforts/<slug>.md`)
 - Populate with the name, goal, and any active work the user names
+- If this effort is part of a broader area, set `parents: [<parent-slug>]`; otherwise leave `parents: []`
 
 ### Step 3 — Create a context-primer for the effort
 
@@ -79,12 +79,15 @@ If the user has ideas, todos, or half-formed thoughts they want to capture:
 - Set `status: raw` — these are inbox items, not finished notes
 - One note per idea
 
-### Step 5 — Set up a project (if applicable)
+### Step 5 — Link to a dev project (if applicable)
 
-If the user has a discrete software project:
-- Use `brain_create` with the `project` template in `Projects/<project-slug>/`
-- Ask for: project name, stack, repo URL, which effort it belongs to
-- The `id` field should be a stable lowercase hyphenated slug matching the folder name
+If the effort has a linked software repository on this machine:
+- Add a `dev:` map to the effort note frontmatter with the hostname and absolute path:
+  ```yaml
+  dev:
+    Chriss-MacBook-Air.local: ~/projects/my-project
+  ```
+- Ask: what is the hostname of this machine and where does the repo live?
 - Ask whether to create an initial spec for the first feature
 
 ### Step 6 — Confirm and summarise
@@ -97,6 +100,8 @@ When done:
 ## Frontmatter rules
 
 - `status` on discovery notes is always `raw` at creation — never set it to anything else during setup
+- `status` on `doc` notes follows a publication lifecycle: `draft → review → published → archived`. Use `draft` at creation.
+- `doc` notes live in `Efforts/<slug>/docs/` — numeric filename prefixes (`01-`, `02-`) preserve reading order within a set
 - `tags` are lowercase, hyphenated, no spaces: `vault-tooling`, `local-llm`
 - `created` is today's date in `YYYY-MM-DD` format — the template fills this automatically via `brain_create`
 - Wikilinks use `[[Note Title]]` syntax — stub them even if the target doesn't exist yet
