@@ -81,6 +81,7 @@ RUN echo 'export PATH="/usr/local/lib/brain-tools:$PATH"' > /etc/zsh/zshenv \
 # Add brain tools to PATH and Python path (for non-zsh processes)
 ENV PATH="/usr/local/lib/brain-tools:$PATH"
 ENV PYTHONPATH="/usr/local/lib/brain-tools"
+ENV HISTFILE="/home/coder/.zsh-data/history"
 
 EXPOSE 7779 8080
 

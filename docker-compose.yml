@@ -10,6 +10,7 @@ services:
       - ${BRAIN_HOST_PATH}:/brain
       - ${HOME}/.claude:/home/coder/.claude:ro
       - code-server-data:/home/coder/.local/share/code-server
+      - zsh-data:/home/coder/.zsh-data
     env_file:
       - .env
     ports:
@@ -21,3 +22,4 @@ services:
 
 volumes:
   code-server-data:
+  zsh-data:
