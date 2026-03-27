@@ -87,10 +87,17 @@ EXPOSE 7779 8080
 
 # VS Code extensions — must run as coder user
 USER coder
-RUN code-server --install-extension foam.foam-vscode \
-    && code-server --install-extension yzhang.markdown-all-in-one \
-    && code-server --install-extension bierner.markdown-preview-github-styles \
-    && code-server --install-extension mushan.vscode-paste-image
+RUN for ext in \
+        foam.foam-vscode \
+        yzhang.markdown-all-in-one \
+        bierner.markdown-preview-github-styles \
+        mushan.vscode-paste-image; do \
+    for i in 1 2 3; do \
+        code-server --install-extension "$ext" && break; \
+        echo "Retry $i for $ext..."; \
+        sleep 5; \
+    done; \
+    done
 
 # Bake in settings and keybindings
 COPY --chown=coder:coder code-server/settings.json /home/coder/.local/share/code-server/User/settings.json
