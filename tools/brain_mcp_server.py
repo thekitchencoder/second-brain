@@ -20,6 +20,8 @@ from lib.brain import (
     handle_brain_create,
     handle_brain_edit,
     handle_brain_backlinks,
+    handle_brain_trash,
+    handle_brain_restore,
 )
 
 _cfg = Config()
@@ -159,6 +161,41 @@ def _build_server():
                     "required": ["filepath"],
                 },
             ),
+            Tool(
+                name="brain_trash",
+                description=(
+                    "Move a note to .trash/ and remove it from the search index immediately. "
+                    "Reports any backlinks that will become orphaned. "
+                    "Use brain_restore to undo."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filepath": {
+                            "type": "string",
+                            "description": "Relative path to the .md file to trash (e.g. 'Cards/foo.md')",
+                        },
+                    },
+                    "required": ["filepath"],
+                },
+            ),
+            Tool(
+                name="brain_restore",
+                description=(
+                    "Restore a note from .trash/ back to its original location. "
+                    "The file watcher will re-index it automatically."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "trash_path": {
+                            "type": "string",
+                            "description": "Path as returned by brain_trash (e.g. '.trash/Cards/foo.md')",
+                        },
+                    },
+                    "required": ["trash_path"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -216,6 +253,17 @@ def _build_server():
         elif name == "brain_backlinks":
             text = handle_brain_backlinks(
                 filepath=arguments["filepath"],
+                brain_path=brain_path,
+            )
+        elif name == "brain_trash":
+            text = handle_brain_trash(
+                filepath=arguments["filepath"],
+                brain_path=brain_path,
+                db_path=db_path,
+            )
+        elif name == "brain_restore":
+            text = handle_brain_restore(
+                trash_path=arguments["trash_path"],
                 brain_path=brain_path,
             )
         else:
