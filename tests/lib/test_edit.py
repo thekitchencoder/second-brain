@@ -156,6 +156,19 @@ def test_find_replace_no_match():
     assert text == "hello world"
 
 
+def test_find_replace_invalid_regex_returns_error():
+    """Invalid regex must return an error tuple, not raise."""
+    text, n = find_replace("some text", r"(invalid[regex", "replace", regex=True)
+    assert n == -1  # sentinel for error
+    assert "Invalid regex" in text
+
+
+def test_find_replace_valid_regex_still_works():
+    text, n = find_replace("hello world", r"w\w+", "there", regex=True)
+    assert n == 1
+    assert text == "hello there"
+
+
 # ── insert_wikilink ─────────────────────────────────────────────────
 
 

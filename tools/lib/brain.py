@@ -271,6 +271,8 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
             regex=kwargs.get("regex", False),
             count=kwargs.get("count", 0),
         )
+        if n == -1:
+            return text  # text is the error message
         detail = f"Replaced {n} occurrence(s)"
 
     elif op == "insert_wikilink":
