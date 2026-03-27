@@ -93,8 +93,7 @@ USER coder
 RUN for ext in \
         foam.foam-vscode \
         yzhang.markdown-all-in-one \
-        bierner.markdown-preview-github-styles \
-        mushan.vscode-paste-image; do \
+        bierner.markdown-preview-github-styles; do \
     for i in 1 2 3; do \
         code-server --install-extension "$ext" && break; \
         echo "Retry $i for $ext..."; \

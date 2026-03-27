@@ -34,7 +34,7 @@
   "extensions.autoUpdate": false,
   "extensions.autoCheckUpdates": false,
   "update.mode": "none",
-  "pasteImage.path": "${currentFileDir}/assets",
-  "pasteImage.namePrefix": "",
-  "pasteImage.insertPattern": "![$fileName](assets/$fileName)"
+  "markdown.copyFiles.destination": {
+    "**/*": "assets/${fileName}"
+  }
 }
