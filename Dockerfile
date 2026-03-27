@@ -88,6 +88,14 @@ ENV HISTFILE="/home/coder/.zsh-data/history"
 
 EXPOSE 7779 8080
 
+# Pre-trust /brain so Claude Code never prompts for folder trust
+# Written as root before switching to coder; host ~/.claude.json is NOT mounted
+# (host processes write it concurrently, causing JSON parse errors).
+# Credentials go in .env — see .env.example.
+RUN echo '{"projects":{"/brain":{"allowedTools":[],"hasTrustDialogAccepted":true}}}' \
+    > /home/coder/.claude.json \
+    && chown coder:coder /home/coder/.claude.json
+
 # VS Code extensions — must run as coder user
 USER coder
 RUN for ext in \
