@@ -87,12 +87,16 @@ def test_init_db_rejects_negative_dim(db_path):
         init_db(db_path, embedding_dim=-1)
 
 
-def test_init_db_meta_row_uses_param_not_fstring(db_path):
-    """meta INSERT should go through parameterised execute, not executescript."""
+def test_init_db_stores_embedding_dim_in_meta(db_path):
+    """meta table should record embedding_dim as a string value."""
     init_db(db_path, embedding_dim=4)
-    import sqlite3
     conn = sqlite3.connect(db_path)
     row = conn.execute("SELECT value FROM meta WHERE key='embedding_dim'").fetchone()
     conn.close()
     assert row is not None
     assert row[0] == "4"
+
+
+def test_init_db_rejects_bool_dim(db_path):
+    with pytest.raises(ValueError, match="positive integer"):
+        init_db(db_path, embedding_dim=True)
