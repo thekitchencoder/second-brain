@@ -1,0 +1,40 @@
+{
+  "workbench.activityBar.visible": false,
+  "workbench.statusBar.visible": false,
+  "editor.minimap.enabled": false,
+  "editor.wordWrap": "on",
+  "editor.lineNumbers": "off",
+  "editor.renderLineHighlight": "none",
+  "editor.scrollBeyondLastLine": false,
+  "workbench.startupEditor": "none",
+  "security.workspace.trust.enabled": false,
+  "files.defaultLanguage": "markdown",
+  "files.watcherExclude": {
+    "**/.ai/**": true,
+    "**/.git/**": true,
+    "**/.trash/**": true
+  },
+  "markdown.preview.breaks": true,
+  "foam.links.hover.enable": true,
+  "foam.files.ignore": [
+    "**/.zk/**",
+    "**/zk/**",
+    "**/templates/**",
+    "**/.ai/**",
+    "**/.trash/**",
+    "**/.git/**"
+  ],
+  "editor.fontFamily": "ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace",
+  "editor.fontSize": 14,
+  "workbench.colorTheme": "Default Dark Modern",
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+  "chat.disableAIFeatures": true,
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "update.mode": "none",
+  "markdown.copyFiles.destination": {
+    "**/*": "assets/${fileName}"
+  }
+}

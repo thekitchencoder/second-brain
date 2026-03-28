@@ -1,6 +1,24 @@
 #!/bin/sh
-# Start the brain indexer in watch mode as a background service.
-# Logs go to /brain/.ai/watch.log alongside the embeddings DB.
+# Idempotently seed Claude Code user config from the baked-in seed directory.
+# Files are only written on first run — edits in the volume survive rebuilds.
+# ~/.claude.json lives inside the volume and is symlinked from the home dir
+# so Claude Code can write session state without clobbering it on rebuild.
+CLAUDE_DIR=/home/coder/.claude
+SEED_DIR=/usr/local/lib/brain-tools/claude-seed
+mkdir -p "$CLAUDE_DIR"
+# Seed visible files/dirs (settings.json, skills/, agents/, etc.)
+for f in "$SEED_DIR"/*; do
+    dest="$CLAUDE_DIR/$(basename "$f")"
+    [ ! -e "$dest" ] && cp -r "$f" "$dest"
+done
+# Seed dotfiles separately (glob * skips them in sh)
+if [ ! -f "$CLAUDE_DIR/.claude.json" ]; then
+    cp "$SEED_DIR/.claude.json" "$CLAUDE_DIR/.claude.json"
+fi
+# Symlink ~/.claude.json → volume so Claude Code session writes persist
+ln -sf "$CLAUDE_DIR/.claude.json" /home/coder/.claude.json
+
+# Start brain background services, then hand off to code-server.
 #
 # The watcher requires only the embedding model to be reachable — it has
 # no dependency on brain-init or zk. If the model is not yet available,
@@ -29,4 +47,5 @@ if [ -d /brain ]; then
         BRAIN_MCP_TRANSPORT=http brain-mcp-server >> /brain/.ai/mcp-http.log 2>&1 &
     fi
 fi
-exec "$@"
+# Hand off to code-server's entrypoint (passes "$@" = "--auth none /brain")
+exec /usr/bin/entrypoint.sh "$@"

@@ -1,5 +1,9 @@
 # Brain shell environment
 
+# History — persist across sessions via the zsh-data volume
+setopt INC_APPEND_HISTORY   # write each command immediately, not on shell exit
+setopt HIST_IGNORE_DUPS     # skip duplicate consecutive entries
+
 # Prompt — makes it clear where you are
 PROMPT='%F{green}[brain]%f %F{yellow}%~%f %# '
 

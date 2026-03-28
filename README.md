@@ -16,7 +16,10 @@ cp .env.example .env
 # Start (pulls image from Docker Hub)
 docker compose up -d
 
-# Shell into the container
+# Browser UI — VS Code with brain tools and Claude Code
+open http://localhost:8080
+
+# Or shell into the container directly
 docker exec -it brain zsh
 
 # Initialise a brain (first time only)
@@ -42,6 +45,54 @@ cp -r skills/brain-* ~/.claude/skills/
 ```
 
 No re-indexing required unless the release notes say otherwise.
+
+## Browser UI (code-server)
+
+The container includes a browser-based VS Code at `http://localhost:8080` — no password, single-user. This is the primary interface when running at a machine where Obsidian can't be installed.
+
+**Features:**
+- Full VS Code in the browser with your vault open
+- Foam extension — `[[wikilink]]` navigation, backlinks panel, graph view
+- Integrated terminal running zsh with all brain tools on PATH (`brain-search`, `zk`, `brain-index`, etc.)
+- Claude Code pre-configured in the terminal — connected to Docker Model Runner via the brain MCP server
+
+**Claude Code in the terminal:**
+
+Claude Code is pre-wired with:
+- Docker Model Runner as the LLM backend (no Anthropic API key needed)
+- Brain MCP server pre-approved — all brain tools available immediately
+- All skills from `skills/` and `brain-skills/` seeded into `~/.claude/skills/`
+
+```bash
+# Open the browser UI
+open http://localhost:8080
+
+# In the VS Code integrated terminal, Claude Code is ready:
+claude
+```
+
+**Configuring the model:**
+
+Claude Code reads `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_MODEL` from the container environment. Set them in `.env` and restart — no rebuild needed:
+
+```bash
+# .env
+ANTHROPIC_BASE_URL=http://model-runner.docker.internal
+ANTHROPIC_AUTH_TOKEN=ollama
+ANTHROPIC_MODEL=minimax-2.5:latest
+```
+
+To switch to real Claude, remove `ANTHROPIC_BASE_URL` and set a real `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`.
+
+**Persistent state:**
+
+| Volume | Contents |
+|---|---|
+| `claude-data` | Claude Code user config (`~/.claude/`) — settings, session history |
+| `code-server-data` | VS Code UI state — open tabs, panel layout |
+| `zsh-data` | Zsh history across sessions |
+
+---
 
 ## Host aliases
 
@@ -438,16 +489,21 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 
 | Variable | Default | Description |
 |---|---|---|
-| `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host |
+| `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host (shell export, not in `.env`) |
 | `EMBEDDING_BASE_URL` | Docker Model Runner | OpenAI-compatible embedding endpoint |
 | `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name — dimension auto-detected at index time |
 | `CHAT_BASE_URL` | Docker Model Runner | Chat completions endpoint |
-| `CHAT_MODEL` | `llama3.2` | Chat model name |
+| `CHAT_MODEL` | `llama3.2` | Chat model for brain REST API |
 | `OPENAI_API_KEY` | `local` | API key (any non-empty string for local endpoints) |
 | `BRAIN_MCP_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
 | `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for MCP HTTP mode |
 | `BRAIN_MCP_PORT` | `7780` | Port for MCP HTTP mode |
 | `BRAIN_API_PORT` | `7779` | Port for the REST API |
+| `CODE_SERVER_PORT` | `8080` | Port for the browser VS Code UI |
+| `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint — set to `http://model-runner.docker.internal` for local |
+| `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token — use `ollama` for Docker Model Runner |
+| `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `minimax-2.5:latest` |
+| `BRAVE_API_KEY` | — | Optional — enables web search in Claude Code via Brave Search MCP |
 
 ### Using Ollama instead of Docker Model Runner
 
