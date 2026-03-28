@@ -22,14 +22,32 @@ BRAIN_HOST_PATH=/path/to/vault docker compose -f docker-compose.yml up
 
 ```bash
 # Unit tests (no Docker needed)
-pytest -m "not integration"
+python3 -m pytest -m "not integration"
 
 # Single test file
-pytest tests/test_brain_service.py
-
-# All tests including integration (requires running container)
-pytest
+python3 -m pytest tests/test_brain_service.py
 ```
+
+Unit tests fail on macOS system Python (3.9) due to restricted SQLite — `enable_load_extension` is disabled. This affects `test_brain_index` and `test_db` suites. Run inside the container for full coverage, or accept 99 passing as the host baseline.
+
+### Integration tests
+
+Integration tests spin up a fresh container via `testcontainers` and require Docker Model Runner with an embedding model loaded.
+
+**One-time host setup:**
+```bash
+pip3 install testcontainers fastapi httpx
+```
+
+**Run (use `model-runner.docker.internal` — testcontainers launches a container that must reach Model Runner from inside Docker, so `localhost:12434` won't work):**
+```bash
+SECOND_BRAIN_IMAGE=second-brain-dev:latest \
+EMBEDDING_BASE_URL=http://model-runner.docker.internal/engines/llama.cpp/v1 \
+EMBEDDING_MODEL=ai/embeddinggemma:latest \
+python3 -m pytest -m integration -v --ignore=tests/test_brain_api.py
+```
+
+Adjust `EMBEDDING_MODEL` to whichever model is loaded in Docker Model Runner (`ai/embeddinggemma:latest` is what's available on the dev machine). Tests skip automatically if the model is unreachable.
 
 Test fixtures live in `tests/fixtures/vault/`. Python path includes `tools/` (set in `pyproject.toml`).
 
