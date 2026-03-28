@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "model": "qwen3-coder:latest",
+  "model": "minimax-2.5:latest",
   "promptSuggestionEnabled": false,
   "env": {
     "ANTHROPIC_BASE_URL": "http://model-runner.docker.internal",
