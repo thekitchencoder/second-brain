@@ -88,14 +88,10 @@ ENV HISTFILE="/home/coder/.zsh-data/history"
 
 EXPOSE 7779 8080
 
-# Pre-bake Claude Code config — fully self-contained, no host mounts.
-# .claude.json        — pre-trusts /brain (no interactive prompt)
-# .claude/settings.json — disables telemetry/auth traffic, sets effort level
-RUN echo '{"projects":{"/brain":{"allowedTools":[],"hasTrustDialogAccepted":true}}}' \
-    > /home/coder/.claude.json \
-    && mkdir -p /home/coder/.claude \
-    && chown -R coder:coder /home/coder/.claude.json /home/coder/.claude
-COPY --chown=coder:coder claude/settings.json /home/coder/.claude/settings.json
+# Seed files for Claude Code user config — copied idempotently at startup
+# so settings survive rebuilds once edited. See tools/entrypoint.sh.
+COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
+RUN mkdir -p /home/coder/.claude && chown coder:coder /home/coder/.claude
 
 # VS Code extensions — must run as coder user
 USER coder
