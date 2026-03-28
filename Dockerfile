@@ -96,7 +96,10 @@ EXPOSE 7779 8080
 COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
 COPY --chown=coder:coder --from=brain_repo skills/ /usr/local/lib/brain-tools/claude-seed/skills/
 COPY --chown=coder:coder --from=brain_repo brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
-RUN mkdir -p /home/coder/.claude && chown coder:coder /home/coder/.claude
+# Pre-create volume-mounted directories owned by coder so Docker inherits
+# the right permissions on first mount (avoids root-owned dirs and silent failures).
+RUN mkdir -p /home/coder/.claude /home/coder/.zsh-data \
+    && chown coder:coder /home/coder/.claude /home/coder/.zsh-data
 
 # VS Code extensions — must run as coder user
 USER coder
