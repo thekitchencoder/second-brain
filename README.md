@@ -422,12 +422,14 @@ The HTTP endpoint is `http://<host>:<port>/mcp` and implements the MCP Streamabl
 | `brain_search(query, limit?)` | Semantic search — returns results with full frontmatter provenance |
 | `brain_query(tag?, status?, type?)` | Structured metadata query via zk |
 | `brain_read(filepath)` | Read the full content of a note by filepath |
-| `brain_write(filepath, content)` | Write content to a note (use after `brain_create`) |
+| `brain_write(filepath, content)` | Overwrite a note's full content (use `brain_edit` to surgically modify an existing note) |
 | `brain_create(template, title, directory?)` | Create a note stub from a template in an optional subdirectory, returns filepath |
 | `brain_templates()` | List available templates — call before `brain_create` |
 | `brain_related(filepath, limit?)` | Find semantically related notes |
 | `brain_edit(filepath, op, ...)` | Surgical edit — update frontmatter, replace/append/prepend sections, find-replace, line ranges, insert wikilinks |
 | `brain_backlinks(filepath)` | Find all notes that link to a given note via `[[wikilinks]]` |
+| `brain_trash(filepath)` | Move a note to `.trash/`, remove from index, report any backlinks that now dangle |
+| `brain_restore(trash_path)` | Restore a trashed note to its original location and re-index |
 
 ## Skills
 
@@ -464,13 +466,16 @@ for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/sk
 
 | Skill | Trigger | What it does |
 |---|---|---|
-| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks + index |
+| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks |
 | `brain-connect` | "Find connections for this note" | Surfaces related notes, offers to patch wikilinks |
 | `brain-triage` | "Process my inbox" | Works through `status: raw` notes one at a time — promote, archive, or defer |
 | `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
 | `brain-daily` | "Start my day" | Creates today's daily note, carries forward open items, shows inbox count |
 | `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort, flags orphans and missing stubs |
 | `brain-extract` | "Pull the ideas out of this note" | Extracts atomic ideas from a long note into separate Cards with wikilinks back |
+| `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
+| `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
+| `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
 
 ### Claude Desktop / claude.ai
 
