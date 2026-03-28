@@ -1,11 +1,21 @@
-FROM python:3.12-slim
+FROM codercom/code-server:latest
 
-LABEL version="0.2.5"
+LABEL version="0.3.0"
 
 ARG ZK_VERSION=0.14.1
+ARG SQLITE_VEC_VERSION=0.1.6
 
-# System tools
+USER root
+
+# Allow pip to install into the system Python without a venv
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+# System tools + Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    nodejs \
+    npm \
     curl \
     fzf \
     ripgrep \
@@ -13,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     git \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/batcat /usr/local/bin/bat
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
 # zk binary
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -26,21 +36,25 @@ RUN ARCH=$(dpkg --print-architecture) && \
     | tar xz -C /usr/local/bin/ zk && \
     chmod +x /usr/local/bin/zk
 
-# Python dependencies (install without sqlite-vec first, then build sqlite-vec from source)
+# Python dependencies (excluding sqlite-vec — built from source below)
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir $(grep -v sqlite-vec /tmp/requirements.txt | tr '\n' ' ')
+RUN python3 -m pip install --no-cache-dir \
+    $(grep -v sqlite-vec /tmp/requirements.txt | tr '\n' ' ')
 
 # Build sqlite-vec from source (PyPI aarch64 wheel contains a 32-bit binary)
-ARG SQLITE_VEC_VERSION=0.1.6
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-dev wget \
     && cd /tmp \
     && wget -q "https://github.com/asg017/sqlite-vec/releases/download/v${SQLITE_VEC_VERSION}/sqlite-vec-${SQLITE_VEC_VERSION}-amalgamation.tar.gz" \
     && tar xzf "sqlite-vec-${SQLITE_VEC_VERSION}-amalgamation.tar.gz" \
-    && pip install --no-cache-dir "sqlite-vec>=${SQLITE_VEC_VERSION}" \
-    && gcc -shared -fPIC -I/usr/include -o /usr/local/lib/python3.12/site-packages/sqlite_vec/vec0.so sqlite-vec.c -lm \
+    && python3 -m pip install --no-cache-dir "sqlite-vec>=${SQLITE_VEC_VERSION}" \
+    && SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])") \
+    && gcc -shared -fPIC -I/usr/include -o "${SITE_PACKAGES}/sqlite_vec/vec0.so" sqlite-vec.c -lm \
     && apt-get remove -y gcc libsqlite3-dev wget \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /tmp/sqlite-vec*
+
+# Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
 
 # Brain tools
 COPY tools/ /usr/local/lib/brain-tools/
@@ -54,15 +68,58 @@ RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-template-sync \
               /usr/local/lib/brain-tools/entrypoint.sh
 
-EXPOSE 7779
-
-# Shell environment
+# Shell environment — copy to both coder and root (container runs as root)
+COPY tools/brain.zshrc /home/coder/.zshrc
 COPY tools/brain.zshrc /root/.zshrc
+RUN chown coder:coder /home/coder/.zshrc
 
-# Add tools to PATH and Python path
+# System-wide zsh environment — ensures brain tools are on PATH for all zsh
+# instances (login, non-login, interactive, non-interactive) regardless of user
+RUN echo 'export PATH="/usr/local/lib/brain-tools:$PATH"' > /etc/zsh/zshenv \
+    && echo 'export PYTHONPATH="/usr/local/lib/brain-tools"' >> /etc/zsh/zshenv \
+    && echo 'export HISTFILE="/home/coder/.zsh-data/history"' >> /etc/zsh/zshenv \
+    && echo 'export HISTSIZE=10000' >> /etc/zsh/zshenv \
+    && echo 'export SAVEHIST=10000' >> /etc/zsh/zshenv
+
+# Add brain tools to PATH and Python path (for non-zsh processes)
 ENV PATH="/usr/local/lib/brain-tools:$PATH"
 ENV PYTHONPATH="/usr/local/lib/brain-tools"
+ENV HISTFILE="/home/coder/.zsh-data/history"
+
+EXPOSE 7779 8080
+
+# Seed files for Claude Code user config — copied idempotently at startup
+# so settings survive rebuilds once edited. See tools/entrypoint.sh.
+# settings.json and .claude.json are container-specific (in this branch).
+# Skills come directly from the main repo at build time via the brain_repo
+# additional context — no committed copies needed here.
+COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
+COPY --chown=coder:coder --from=brain_repo skills/ /usr/local/lib/brain-tools/claude-seed/skills/
+COPY --chown=coder:coder --from=brain_repo brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
+# Pre-create volume-mounted directories owned by coder so Docker inherits
+# the right permissions on first mount (avoids root-owned dirs and silent failures).
+RUN mkdir -p /home/coder/.claude /home/coder/.zsh-data \
+    && chown coder:coder /home/coder/.claude /home/coder/.zsh-data
+
+# VS Code extensions — must run as coder user
+USER coder
+RUN for ext in \
+        foam.foam-vscode \
+        yzhang.markdown-all-in-one \
+        bierner.markdown-preview-github-styles; do \
+    for i in 1 2 3; do \
+        code-server --install-extension "$ext" && break; \
+        echo "Retry $i for $ext..."; \
+        sleep 5; \
+    done; \
+    done
+
+# Bake in settings and keybindings
+COPY --chown=coder:coder code-server/settings.json /home/coder/.local/share/code-server/User/settings.json
+COPY --chown=coder:coder code-server/keybindings.json /home/coder/.local/share/code-server/User/keybindings.json
+
+USER coder
 
 WORKDIR /brain
 ENTRYPOINT ["/usr/local/lib/brain-tools/entrypoint.sh"]
-CMD ["zsh"]
+CMD ["--bind-addr", "0.0.0.0:8080", "--user-data-dir", "/home/coder/.local/share/code-server", "--auth", "none", "/brain"]
