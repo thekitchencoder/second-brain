@@ -90,7 +90,12 @@ EXPOSE 7779 8080
 
 # Seed files for Claude Code user config — copied idempotently at startup
 # so settings survive rebuilds once edited. See tools/entrypoint.sh.
+# settings.json and .claude.json are container-specific (in this branch).
+# Skills come directly from the main repo at build time via the brain_repo
+# additional context — no committed copies needed here.
 COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
+COPY --chown=coder:coder --from=brain_repo skills/ /usr/local/lib/brain-tools/claude-seed/skills/
+COPY --chown=coder:coder --from=brain_repo brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
 RUN mkdir -p /home/coder/.claude && chown coder:coder /home/coder/.claude
 
 # VS Code extensions — must run as coder user
