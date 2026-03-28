@@ -1,11 +1,6 @@
 services:
   brain:
-    build:
-      context: .
-      additional_contexts:
-        # Gives the Dockerfile access to skills/ and brain-skills/ from the
-        # main repo root without duplicating them in this branch.
-        brain_repo: ../..
+    build: .
     image: kitchencoder/second-brain:latest
     container_name: brain
     volumes:

@@ -90,12 +90,9 @@ EXPOSE 7779 8080
 
 # Seed files for Claude Code user config — copied idempotently at startup
 # so settings survive rebuilds once edited. See tools/entrypoint.sh.
-# settings.json and .claude.json are container-specific (in this branch).
-# Skills come directly from the main repo at build time via the brain_repo
-# additional context — no committed copies needed here.
 COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
-COPY --chown=coder:coder --from=brain_repo skills/ /usr/local/lib/brain-tools/claude-seed/skills/
-COPY --chown=coder:coder --from=brain_repo brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
+COPY --chown=coder:coder skills/ /usr/local/lib/brain-tools/claude-seed/skills/
+COPY --chown=coder:coder brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
 # Pre-create volume-mounted directories owned by coder so Docker inherits
 # the right permissions on first mount (avoids root-owned dirs and silent failures).
 RUN mkdir -p /home/coder/.claude /home/coder/.zsh-data \
