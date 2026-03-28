@@ -17,43 +17,31 @@ MCP paths: `/brain/X` → `X` (strip `/brain` prefix)
 
 Today's date: use the current date in `YYYY-MM-DD` format.
 
-Glob for `Calendar/*YYYY-MM-DD*` to see if today's note already exists.
+**Call `Glob(pattern="Calendar/*YYYY-MM-DD*")` NOW** (substitute the actual date). Do not proceed until you have the result.
 
 - **Exists** → Read it, surface its content, skip to step 3
-- **Missing** → `brain_create(daily, "", Calendar/)` then `brain_write` with the template below
+- **Missing** → **Call `brain_create(template="daily", title="", directory="Calendar/")` NOW.** Note the returned filepath. Do NOT call `brain_write` on this file — go to step 2.
 
 ### 2. Seed today's note
 
-Pull in context before the user starts writing:
+Run all three lookups in parallel NOW — do not skip any:
 
-**Yesterday's note** — Glob for yesterday's date in `Calendar/`. If found, Grep for any lines that look like unresolved items (lines starting with `- [ ]`, `TODO`, `open:`, `follow up`). List them under `## Carried forward`.
+**a. Yesterday's open items** — **Call `Glob(pattern="Calendar/*<yesterday-date>*")` NOW.** If found, **Call `Grep(pattern="- \\[ \\]|TODO|open:|follow up", path=<yesterday filepath>)` NOW.** Collect any matching lines.
 
-**Inbox count** — Grep for `status: raw` across the vault. Report count only: "3 raw notes in inbox."
+**b. Inbox count** — **Call `Grep(pattern="^status: raw", glob="**/*.md")` NOW.** Count the matching files.
 
-**Active efforts** — Grep for `status: current` in `Efforts/*/\_index.md`. List effort titles.
+**c. Active efforts** — **Call `brain_query(status="active")` NOW.** Filter the results to `type: effort`. Collect effort titles.
 
-Write all of this into today's note via `brain_write`.
+Then populate sections using `brain_edit` — do NOT use `brain_write`:
 
-### Daily note structure
+```
+brain_edit(op=replace_section, filepath=<filepath>, heading="Carried forward", body="<unresolved items from yesterday, or '<!-- nothing carried forward -->'>"  )
+brain_edit(op=replace_section, filepath=<filepath>, heading="Inbox", body="<!-- <N> raw notes pending triage -->")
+```
 
-```markdown
----
-type: daily
-title: YYYY-MM-DD
-status: current
-created: YYYY-MM-DD
-tags: [daily]
----
-
-## Carried forward
-<!-- unresolved items from yesterday, if any -->
-
-## Today
-
-## Notes
-
-## Inbox
-<!-- N raw notes pending triage -->
+If there are active efforts, add them as a brief list under `## Today`:
+```
+brain_edit(op=replace_section, filepath=<filepath>, heading="Today", body="**Active efforts:**\n<effort list>")
 ```
 
 ### 3. Surface and hand off
@@ -63,5 +51,6 @@ Show the user today's note content and say: "Today's note is at `Calendar/YYYY-M
 ## Rules
 
 - **Never create a duplicate.** Check with Glob before creating.
+- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit(op=replace_section)` to populate sections.
 - **Carried forward items are read-only suggestions.** Don't auto-move or delete them from yesterday's note.
 - **Keep the seeded content minimal.** The note is a workspace, not a report.

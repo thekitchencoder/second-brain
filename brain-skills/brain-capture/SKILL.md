@@ -14,9 +14,19 @@ MCP tools return `/brain/X` paths. Strip the `/brain` prefix to get the working 
 
 ## Flow
 
+### 0. Route check — do this FIRST, before anything else
+
+Read the user's request carefully. If it matches any of these patterns, **STOP — do not continue with this skill**:
+
+| User says | Action |
+|---|---|
+| "note for today", "daily note", "today's log", "start my day", "morning review", "what's on today", "daily log" | Invoke the **brain-daily** skill now. Do not continue here. |
+
+Only continue below if the request is clearly NOT a daily note.
+
 ### 1. Search first
 
-Run `brain_search(topic)` before creating anything.
+**Call `brain_search(query=<topic>)` NOW. Do not proceed to step 2 until you have results.**
 
 - **Strong match** → read it, surface it, offer to update rather than duplicate
 - **Weak matches** → note filepaths for the wiring step
@@ -38,14 +48,30 @@ Only ask about type if genuinely ambiguous.
 
 ### 3. Create
 
-Call `brain_create(template, title, directory)`. Infer directory from context:
+**Call `brain_create(template=<template>, title=<title>, directory=<directory>)` NOW.** Note the returned filepath exactly.
 
+Infer directory from context:
 - Known effort → `Efforts/<slug>/`
 - Atomic idea or unclear → `Cards/`
 
-Then `brain_write(filepath, content)` with the captured content.
+**Do NOT call `brain_write` on this file.** Instead, populate it using `brain_edit`:
 
-Tell the user: "Draft at `Efforts/jobs-guarantee/automation-idea.md` — let me know when you've finished editing."
+**a. Update frontmatter fields that differ from template defaults:**
+```
+brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={effort: "<slug or empty>", tags: [<tags>]})
+```
+Only set fields you need to change. The template already sets `type`, `status`, and `created` correctly — do not overwrite them.
+
+**b. Write body content into the appropriate section for the template type:**
+
+| Template | Call |
+|---|---|
+| `discovery` | `brain_edit(op=replace_section, filepath=<filepath>, heading="Idea", body="<captured content>")` |
+| `meeting` | `brain_edit(op=replace_section, filepath=<filepath>, heading="Notes", body="<captured content>")` |
+| `spec` | `brain_edit(op=replace_section, filepath=<filepath>, heading="Overview", body="<captured content>")` |
+| `effort` | `brain_edit(op=replace_section, filepath=<filepath>, heading="Goal", body="<captured content>")` |
+
+Tell the user: "Draft at `<filepath>` — let me know when you've finished editing."
 
 ### 4. Wait
 
@@ -55,7 +81,7 @@ Do not proceed until the user signals they are done editing.
 
 After the user confirms done:
 
-1. Run `brain_search(title)` and `brain_related(filepath)` in parallel
+1. **Call `brain_search(query=<title>)` and `brain_related(filepath=<filepath>)` in parallel NOW.**
 2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related Notes")` — idempotent, safe to call without pre-checking
 3. If the note has a non-empty `effort:` field value: `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
 4. Report: "Linked to 3 notes, added reference to `Efforts/jobs-guarantee.md`"
@@ -67,12 +93,15 @@ After the user confirms done:
 - **Write only what was captured.** No elaboration, no invented content.
 - **`status: raw` on discovery notes** — never set it to anything else during capture.
 - **One note per idea.**
+- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit`.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---|---|
-| Creating without searching first | Always run `brain_search` before `brain_create` |
+| Creating without searching first | Always call `brain_search` before `brain_create` |
+| Calling `brain_write` after `brain_create` | Use `brain_edit(op=replace_section)` to populate content |
 | Placing notes in the brain root | Always pass a `directory` to `brain_create` |
 | Wiring before the user is done | Wait for explicit confirmation before step 5 |
 | Wiring to a non-existent effort note | Glob for `Efforts/<slug>.md` before patching |
+| Routing daily notes through this skill | Check step 0 — daily notes go to brain-daily |

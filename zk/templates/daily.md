@@ -8,8 +8,10 @@ tags: [daily]
 
 # {{format-date now "2006-01-02"}}
 
+## Carried forward
+
+## Today
+
 ## Notes
 
-## Captures
-
-## Links
+## Inbox
