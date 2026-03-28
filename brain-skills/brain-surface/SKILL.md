@@ -9,7 +9,10 @@ Surface efforts with `intensity: simmering` — work that has been set aside but
 
 ## Path Translation
 
-MCP paths: `/brain/X` → `X` (strip `/brain` prefix)
+`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
+
+- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
+- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
 
 ## Intensity Values
 

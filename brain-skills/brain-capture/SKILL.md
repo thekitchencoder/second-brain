@@ -9,8 +9,10 @@ Conversational idea capture with inline wiring after the user finishes editing.
 
 ## Path Translation
 
-MCP tools return `/brain/X` paths. Strip the `/brain` prefix to get the working path:
-`/brain/Cards/foo.md` → `Cards/foo.md`
+`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
+
+- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
+- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
 
 ## Flow
 
