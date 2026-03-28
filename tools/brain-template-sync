@@ -5,9 +5,10 @@ Obsidian templates use:   {{date}}, {{time}}, {{title}}
 zk templates use:         {{format-date now "2006-01-02"}}, {{format-date now "15:04:05"}}, {{title}}
 
 Usage:
+  brain-template-sync status           Show sync state of all templates
+  brain-template-sync diff [name]      Show detailed diff for one or all diverged templates
   brain-template-sync obsidian-to-zk   Convert /brain/templates/ → /brain/.zk/templates/
   brain-template-sync zk-to-obsidian   Convert /brain/.zk/templates/ → /brain/templates/
-  brain-template-sync status           Show sync state of all templates
 """
 import os
 import re
@@ -56,19 +57,42 @@ def cmd_status() -> None:
     zk = {p.stem: p for p in ZK_DIR.glob("*.md")} if ZK_DIR.exists() else {}
     all_names = sorted(obs.keys() | zk.keys())
 
-    print(f"{'Template':<30} {'Obsidian':^10} {'zk':^10}")
-    print("-" * 52)
+    print(f"{'Template':<30} {'Obsidian':^10} {'zk':^10} {'Status':<20}")
+    print("-" * 72)
+    diverged = []
     for name in all_names:
         o = "✓" if name in obs else "—"
         z = "✓" if name in zk else "—"
-        note = ""
+        status = ""
         if name in obs and name in zk:
-            # Compare by converting Obsidian → zk and checking if zk content matches
-            obs_converted, _ = _convert(obs[name].read_text(encoding="utf-8"), _OBS_TO_ZK)
+            obs_content = obs[name].read_text(encoding="utf-8")
             zk_content = zk[name].read_text(encoding="utf-8")
-            if obs_converted.strip() != zk_content.strip():
-                note = " (out of sync)"
-        print(f"{name:<30} {o:^10} {z:^10}{note}")
+            # Convert Obsidian → zk for comparison
+            obs_converted, _ = _convert(obs_content, _OBS_TO_ZK)
+            obs_converted_stripped = obs_converted.strip()
+            zk_stripped = zk_content.strip()
+            if obs_converted_stripped == zk_stripped:
+                status = "in sync"
+            else:
+                # Templates differ — check if zk is the expected conversion result
+                # by converting zk → Obsidian and comparing
+                zk_to_obs, _ = _convert(zk_content, _ZK_TO_OBS)
+                if obs_content.strip() == zk_to_obs.strip():
+                    # zk is what you'd get from converting Obsidian → zk
+                    # but Obsidian has been modified since zk was created
+                    status = "obsidian modified"
+                else:
+                    # zk doesn't match what conversion would produce
+                    status = "zk diverged"
+                diverged.append((name, status, obs[name], zk[name]))
+        elif name in obs:
+            status = "zk missing"
+        elif name in zk:
+            status = "obsidian missing"
+        print(f"{name:<30} {o:^10} {z:^10} {status:<20}")
+
+    if diverged:
+        print(f"\n{len(diverged)} template(s) diverged. Use 'brain-template-sync diff' to see details.")
 
 
 def cmd_obsidian_to_zk() -> None:
@@ -101,10 +125,81 @@ def cmd_zk_to_obsidian() -> None:
             print(f"    warning: {w}")
 
 
+def cmd_diff(name: str) -> None:
+    """Show detailed diff for a specific template or all diverged templates."""
+    obs = {p.stem: p for p in OBSIDIAN_DIR.glob("*.md")} if OBSIDIAN_DIR.exists() else {}
+    zk = {p.stem: p for p in ZK_DIR.glob("*.md")} if ZK_DIR.exists() else {}
+
+    if name:
+        if name not in obs or name not in zk:
+            print(f"Template '{name}' not found in both directories", file=sys.stderr)
+            sys.exit(1)
+        _show_diff(name, obs[name], zk[name])
+        return
+
+    # Show all diverged templates
+    diverged = []
+    for name in sorted(obs.keys() & zk.keys()):
+        obs_content = obs[name].read_text(encoding="utf-8")
+        zk_content = zk[name].read_text(encoding="utf-8")
+        obs_converted, _ = _convert(obs_content, _OBS_TO_ZK)
+        if obs_converted.strip() != zk_content.strip():
+            diverged.append((name, obs[name], zk[name]))
+
+    if not diverged:
+        print("All templates in sync.")
+        return
+
+    for name, obs_path, zk_path in diverged:
+        _show_diff(name, obs_path, zk_path)
+
+
+def _show_diff(name: str, obs_path: Path, zk_path: Path) -> None:
+    """Show side-by-side diff for a template."""
+    obs_content = obs_path.read_text(encoding="utf-8")
+    zk_content = zk_path.read_text(encoding="utf-8")
+
+    # Determine which side was modified
+    obs_converted, _ = _convert(obs_content, _OBS_TO_ZK)
+    zk_to_obs, _ = _convert(zk_content, _ZK_TO_OBS)
+    if obs_content.strip() == zk_to_obs.strip():
+        side = "obsidian modified"
+    elif obs_converted.strip() == zk_content.strip():
+        side = "zk diverged (matches current Obsidian)"
+    else:
+        side = "zk diverged (custom)"
+
+    print(f"\n{'=' * 60}")
+    print(f"Template: {name} ({side})")
+    print(f"{'=' * 60}")
+    print(f"Obsidian: {obs_path}")
+    print(f"zk:       {zk_path}")
+    print()
+
+    # Show unified diff
+    import difflib
+    diff = difflib.unified_diff(
+        obs_content.splitlines(keepends=True),
+        zk_content.splitlines(keepends=True),
+        fromfile="Obsidian",
+        tofile="zk",
+        lineterm=""
+    )
+    diff_lines = list(diff)
+    if diff_lines:
+        print("".join(diff_lines))
+    else:
+        # Files are identical (both modified same way)
+        print("(files are identical - both modified identically)")
+
+
 def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     if cmd == "status":
         cmd_status()
+    elif cmd == "diff":
+        name = sys.argv[2] if len(sys.argv) > 2 else ""
+        cmd_diff(name)
     elif cmd == "obsidian-to-zk":
         print(f"Converting Obsidian → zk  ({OBSIDIAN_DIR} → {ZK_DIR})")
         cmd_obsidian_to_zk()
