@@ -7,3 +7,5 @@ __pycache__/
 docker-compose.override.yml
 skills/*.zip
 .worktrees/
+tests/fixtures/vault/.ai/
+tests/fixtures/vault/.zk/notebook.db

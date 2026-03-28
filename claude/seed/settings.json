@@ -18,10 +18,9 @@
     "allow": [
       "Bash(brain-search *)",
       "Bash(zk *)",
-      "Bash(brain-index *)"
-    ],
-    "deny": [
+      "Bash(brain-index *)",
       "WebSearch"
-    ]
+    ],
+    "deny": []
   }
 }
