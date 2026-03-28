@@ -9,26 +9,48 @@ Save something to the second-brain with correct frontmatter and placement.
 
 ## Steps
 
-1. Run `brain_search` on the topic to check if a note already exists. If a match is found, call `brain_read(filepath)` to get the full content, then offer to update it rather than create a duplicate
-2. Use Glob to scan the top-level folder structure of the brain and infer where similar content lives — suggest a location based on existing patterns
-3. Agree the location with the user if ambiguous
-4. Call `brain_templates` to see what templates are available. If no templates are returned, ask the user to run `brain-init` to set up the vault, then stop. Otherwise call `brain_create(template, title, directory)` — pass the target subdirectory so the file is created in the right place, not the brain root. If unsure which template fits, ask the user. Note the returned filepath.
-5. Compose the full file content with exactly these frontmatter fields:
+1. **Call `brain_search(query=<topic>)` NOW.** Do not proceed until you have results. If a match is found, call `brain_read(filepath)` to get the full content, then offer to update it rather than create a duplicate.
+
+2. Use Glob to scan the top-level folder structure of the brain and infer where similar content lives — suggest a location based on existing patterns.
+
+3. Agree the location with the user if ambiguous.
+
+4. **Call `brain_templates()` NOW** to see what templates are available. If no templates are returned, ask the user to run `brain-init` to set up the vault, then stop. Otherwise call `brain_create(template=<template>, title=<title>, directory=<directory>)` — pass the target subdirectory so the file is created in the right place, not the brain root. If unsure which template fits, ask the user. **Note the returned filepath exactly.**
+
+5. **Call `brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={...})` NOW** to set any frontmatter fields that differ from the template defaults:
 
 ```yaml
-type:     # infer from content — ask if unclear
+type:     # infer from content — only set if different from template
 title:    # human-readable, descriptive
-status:   # draft | current | archived
-created:  # today YYYY-MM-DD
+status:   # draft | current | archived (only set if different from template default)
+created:  # today YYYY-MM-DD (only set if not already set by template)
 tags:     # array, lowercase, hyphenated — at least one tag
 ```
 
-6. Write the body: exactly what was asked to be saved, nothing more. Add wikilinks to related notes found in step 1
-7. Call `brain_write(filepath, content)` with the full file content to save it — do NOT use any filesystem or desktop tool
+Only set fields you need to change. Do NOT overwrite the full frontmatter.
+
+6. **Call `brain_edit(op=replace_section, ...)` NOW** to write the body content into the appropriate section. Use the heading that matches the template:
+
+| Template | Main section heading |
+|---|---|
+| `discovery` | `Idea` |
+| `effort` | `Goal` |
+| `context-primer` | `Background` |
+| `spec` | `Overview` |
+| `meeting` | `Notes` |
+| `daily` | `Notes` |
+| any other | `Notes` |
+
+Example: `brain_edit(op=replace_section, filepath=<filepath>, heading="Idea", body="<content to save>")`
+
+Write exactly what was asked to be saved — nothing more. Add wikilinks to related notes found in step 1 using `brain_edit(op=insert_wikilink, ...)`.
+
+**Never call `brain_write` on a file just created by `brain_create`.**
 
 ## Rules
 
-- **No invented fields.** Only the five above unless the user explicitly requests more.
+- **No invented fields.** Only the five fields listed above unless the user explicitly requests more.
 - **No elaboration.** Write what was asked, stop there.
 - **No folder invention.** Infer location from existing brain structure — do not create new top-level folders.
 - **Check first.** Always search before creating. A duplicate is worse than an update.
+- **`brain_edit` not `brain_write`** after `brain_create` — preserves template-generated frontmatter.
