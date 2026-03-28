@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "/brain": {
+      "allowedTools": [],
+      "hasTrustDialogAccepted": true
+    }
+  },
+  "mcpServers": {
+    "brain": {
+      "type": "stdio",
+      "command": "brain-mcp-server"
+    }
+  }
+}

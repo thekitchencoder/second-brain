@@ -1,4 +1,20 @@
 #!/bin/sh
+# Idempotently seed Claude Code user config from the baked-in seed directory.
+# Files are only written on first run — edits in the volume survive rebuilds.
+# ~/.claude.json lives inside the volume and is symlinked from the home dir
+# so Claude Code can write session state without clobbering it on rebuild.
+CLAUDE_DIR=/home/coder/.claude
+SEED_DIR=/usr/local/lib/brain-tools/claude-seed
+mkdir -p "$CLAUDE_DIR"
+for f in "$SEED_DIR"/*; do
+    dest="$CLAUDE_DIR/$(basename "$f")"
+    [ ! -e "$dest" ] && cp -r "$f" "$dest"
+done
+if [ ! -f "$CLAUDE_DIR/.claude.json" ]; then
+    cp "$SEED_DIR/.claude.json" "$CLAUDE_DIR/.claude.json"
+fi
+ln -sf "$CLAUDE_DIR/.claude.json" /home/coder/.claude.json
+
 # Start brain background services, then hand off to code-server.
 #
 # The watcher requires only the embedding model to be reachable — it has
