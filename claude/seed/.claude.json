@@ -1,14 +1,23 @@
 {
-  "projects": {
-    "/brain": {
-      "allowedTools": [],
-      "hasTrustDialogAccepted": true
-    }
-  },
   "mcpServers": {
     "brain": {
-      "type": "stdio",
       "command": "brain-mcp-server"
+    }
+  },
+  "projects": {
+    "/brain": {
+      "hasTrustDialogAccepted": true,
+      "allowedTools": [
+        "mcp__brain__brain_search",
+        "mcp__brain__brain_query",
+        "mcp__brain__brain_read",
+        "mcp__brain__brain_write",
+        "mcp__brain__brain_create",
+        "mcp__brain__brain_templates",
+        "mcp__brain__brain_edit",
+        "mcp__brain__brain_related",
+        "mcp__brain__brain_backlinks"
+      ]
     }
   }
 }
