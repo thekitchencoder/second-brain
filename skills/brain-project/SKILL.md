@@ -7,11 +7,15 @@ description: Use when the user says "start a new project", "set up a project", o
 
 Scaffold a new effort in the second-brain with two seed documents.
 
+## Path Notes
+
+The vault lives inside a Docker container. Do NOT use Glob or filesystem tools to inspect vault paths — they will search the wrong directory. Use MCP tools only. When MCP tools return absolute paths like `/brain/Efforts/foo.md`, pass them directly back to other MCP tools unchanged.
+
 ## Steps
 
 1. Ask for a project name if not provided. Derive a kebab-case slug (e.g. `my-project-name`).
 
-2. Use Glob to scan `Efforts/` — check existing effort notes (`Efforts/*.md`) to understand the established pattern.
+2. **Call `brain_query(type="effort")` NOW** to see existing efforts and understand the established pattern. Do not proceed until you have results.
 
 3. **Call `brain_search(query=<topic>)` NOW** to find any prior related work. Do not proceed until you have results. For any relevant hit, call `brain_read(filepath)` to get the full content before drafting new notes.
 

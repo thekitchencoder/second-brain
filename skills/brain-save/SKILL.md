@@ -7,11 +7,15 @@ description: Use when the user says "remember", "save", "capture", "note down", 
 
 Save something to the second-brain with correct frontmatter and placement.
 
+## Path Notes
+
+The vault lives inside a Docker container. Do NOT use Glob or filesystem tools to inspect vault paths — they will search the wrong directory. Use MCP tools only. When MCP tools return absolute paths like `/brain/Cards/foo.md`, pass them directly back to other MCP tools unchanged.
+
 ## Steps
 
 1. **Call `brain_search(query=<topic>)` NOW.** Do not proceed until you have results. If a match is found, call `brain_read(filepath)` to get the full content, then offer to update it rather than create a duplicate.
 
-2. Use Glob to scan the top-level folder structure of the brain and infer where similar content lives — suggest a location based on existing patterns.
+2. **Call `brain_query(type="effort")` NOW** to see existing effort areas and infer where similar content belongs. Suggest a location based on the results. Valid top-level folders: `Atlas/`, `Efforts/`, `Cards/`, `Calendar/`, `Sources/`.
 
 3. Agree the location with the user if ambiguous.
 
