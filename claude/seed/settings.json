@@ -22,6 +22,10 @@
       "Bash(brain-search *)",
       "Bash(zk *)",
       "Bash(brain-index *)"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch"
     ]
   }
 }

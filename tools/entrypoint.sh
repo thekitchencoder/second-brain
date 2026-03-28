@@ -6,13 +6,16 @@
 CLAUDE_DIR=/home/coder/.claude
 SEED_DIR=/usr/local/lib/brain-tools/claude-seed
 mkdir -p "$CLAUDE_DIR"
+# Seed visible files/dirs (settings.json, skills/, agents/, etc.)
 for f in "$SEED_DIR"/*; do
     dest="$CLAUDE_DIR/$(basename "$f")"
     [ ! -e "$dest" ] && cp -r "$f" "$dest"
 done
+# Seed dotfiles separately (glob * skips them in sh)
 if [ ! -f "$CLAUDE_DIR/.claude.json" ]; then
     cp "$SEED_DIR/.claude.json" "$CLAUDE_DIR/.claude.json"
 fi
+# Symlink ~/.claude.json → volume so Claude Code session writes persist
 ln -sf "$CLAUDE_DIR/.claude.json" /home/coder/.claude.json
 
 # Start brain background services, then hand off to code-server.
