@@ -195,12 +195,12 @@ def stage_brain_plugin(brain_path):
         json.dump(manifest, f, indent=2)
         f.write("\n")
 
-    # Write MCP server config (stdio via docker exec)
+    # Write MCP server config (HTTP transport)
     mcp_config = {
         "mcpServers": {
             "brain": {
-                "command": "docker",
-                "args": ["exec", "-i", "brain", "brain-mcp-server"],
+                "type": "http",
+                "url": "http://localhost:7780/mcp",
             }
         }
     }
@@ -272,9 +272,11 @@ def generate_env(brain_path, config):
         lines.append("# Using Anthropic API directly (set ANTHROPIC_API_KEY in your environment)")
 
     lines.append("")
+    lines.append("# ── MCP transport ─────────────────────────────────────────────────────────────")
+    lines.append("BRAIN_MCP_TRANSPORT=http   # Enable HTTP MCP transport on port 7780")
+    lines.append("")
     lines.append("# ── Optional ──────────────────────────────────────────────────────────────────")
     lines.append("# BRAVE_API_KEY=          # Web search in Claude Code (https://brave.com/search/api/)")
-    lines.append("# BRAIN_MCP_TRANSPORT=http # Enable HTTP MCP transport on port 7780")
     lines.append("")
 
     with open(env_path, "w") as f:
