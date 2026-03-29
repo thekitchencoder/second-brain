@@ -539,6 +539,20 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `minimax-2.5:latest` |
 | `BRAVE_API_KEY` | — | Optional — enables web search in Claude Code via Brave Search MCP |
 
+### Choosing an embedding model
+
+The embedding model affects semantic search quality, indexing speed, and database size. `brain-init` defaults to `mxbai-embed-large` but you can choose a different model during setup or by editing `EMBEDDING_MODEL` in your vault's `.env`.
+
+| Model | Dimensions | Best for | Trade-offs |
+|---|---|---|---|
+| `mxbai-embed-large` | 1024 | General-purpose notes, mixed content | Good balance of quality and speed |
+| `nomic-embed-text` | 768 | Token-dense technical content (code, specs, architecture docs) | Higher quality on technical text, larger index |
+| `all-minilm` | 384 | Large vaults where speed matters | Fastest and smallest index, lower retrieval quality |
+
+**Changing models requires re-indexing** — the embedding dimensions are stored in `embeddings.db`. After changing `EMBEDDING_MODEL`, delete `.ai/embeddings.db` and run `brain-index run` (or restart the container and let the background watcher rebuild it).
+
+For Docker Model Runner, prefix model names with `ai/` (e.g. `ai/mxbai-embed-large:latest`). For Ollama and LM Studio, use the bare name (e.g. `mxbai-embed-large`).
+
 ### Using Ollama instead of Docker Model Runner
 
 ```bash

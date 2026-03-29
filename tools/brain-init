@@ -410,6 +410,17 @@ def run_wizard(brain_path):
                 print("  Note: You'll need to set ANTHROPIC_API_KEY in the container environment.")
                 print("  Embedding/chat still need a local model (Docker Model Runner by default).")
 
+            # Offer embedding model choice
+            print()
+            print("  ── Embedding model ──")
+            print("  The embedding model affects search quality and index size.")
+            print("    mxbai-embed-large  — good general-purpose, 1024 dimensions (default)")
+            print("    nomic-embed-text   — better for token-dense technical content, 768 dims")
+            print("    all-minilm         — lightweight and fast, 384 dims, lower quality")
+            print()
+            embed_model = _ask_input("  Embedding model", default=config["embedding_model"])
+            config["embedding_model"] = embed_model
+
             generate_env(brain_path, config)
         elif choice == "5":
             config = _prompt_env_config()
