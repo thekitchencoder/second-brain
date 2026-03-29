@@ -32,15 +32,13 @@ docker exec -it brain brain-init
 
 ### Connect to host Claude Code
 
-To use brain skills from any Claude Code session on your host machine:
+`brain-init` stages a Claude Code plugin inside the vault with global skills and MCP server config. Install it on your host with one command:
 
 ```bash
-# Install global skills (after running brain-init inside the container)
-cp -r ~/Documents/brain/.ai/host-skills/brain-* ~/.claude/skills/
-
-# Register the MCP server
-claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server
+claude plugin add ~/Documents/brain/.ai/brain-plugin
 ```
+
+This registers the brain MCP server and installs global skills (brain-context, brain-save, brain-project, brain-hygiene) so Claude Code can access your brain from any project.
 
 ### Custom configuration
 
@@ -485,13 +483,15 @@ These are installed automatically when the container starts or when you run `bra
 | `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
 | `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
 
-### Global skills (host install)
+### Global skills (host install via plugin)
 
-Global skills let Claude Code access your brain from any project on your host machine (e.g. while coding, save context back to the brain). `brain-init` stages them into the vault for easy installation:
+Global skills let Claude Code access your brain from any project on your host machine (e.g. while coding, save context back to the brain). `brain-init` stages them as a Claude Code plugin:
 
 ```bash
-cp -r ~/Documents/brain/.ai/host-skills/brain-* ~/.claude/skills/
+claude plugin add ~/Documents/brain/.ai/brain-plugin
 ```
+
+This also registers the brain MCP server — no separate `claude mcp add` needed.
 
 | Skill | Trigger | What it does |
 |---|---|---|
@@ -499,11 +499,6 @@ cp -r ~/Documents/brain/.ai/host-skills/brain-* ~/.claude/skills/
 | `brain-save` | "remember", "save", "capture" | Saves something to the brain with correct frontmatter and placement |
 | `brain-project` | "start a new project" | Scaffolds a new effort with context primer |
 | `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter, orphaned notes, broken wikilinks, stale drafts |
-
-If you have the repo cloned, you can also symlink for auto-updates:
-```bash
-for d in skills/brain-*/; do ln -sf "$PWD/$d" ~/.claude/skills/; done
-```
 
 ### Claude Desktop / claude.ai
 

@@ -14,7 +14,7 @@ Usage:
              Used by the container entrypoint on first start.
     path     Vault directory (default: $BRAIN_PATH or /brain).
 """
-import glob
+import json
 import os
 import shutil
 import subprocess
@@ -166,29 +166,64 @@ def init_vault_skills(brain_path):
         print(f"  Vault skills already installed.")
 
 
-def stage_global_skills(brain_path):
-    """Stage global (host-level) skills into <vault>/.ai/host-skills/ for easy host install."""
+def stage_brain_plugin(brain_path):
+    """Stage a Claude Code plugin at <vault>/.ai/brain-plugin/ for host installation.
+
+    The plugin bundles global skills and an MCP server config so the user
+    can install everything on the host with a single command:
+        claude plugin add <vault>/.ai/brain-plugin
+    """
     skills_source = _find_source(_GLOBAL_SKILLS_SOURCE_CANDIDATES)
     if skills_source is None:
         return
 
-    dest_dir = os.path.join(brain_path, ".ai", "host-skills")
-    os.makedirs(dest_dir, exist_ok=True)
+    plugin_dir = os.path.join(brain_path, ".ai", "brain-plugin")
+    manifest_dir = os.path.join(plugin_dir, ".claude-plugin")
+    skills_dir = os.path.join(plugin_dir, "skills")
 
+    os.makedirs(manifest_dir, exist_ok=True)
+    os.makedirs(skills_dir, exist_ok=True)
+
+    # Write plugin manifest
+    manifest = {
+        "name": "second-brain",
+        "version": "1.0.0",
+        "description": "Global brain skills and MCP server for second-brain",
+    }
+    manifest_path = os.path.join(manifest_dir, "plugin.json")
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+        f.write("\n")
+
+    # Write MCP server config (stdio via docker exec)
+    mcp_config = {
+        "mcpServers": {
+            "brain": {
+                "command": "docker",
+                "args": ["exec", "-i", "brain", "brain-mcp-server"],
+            }
+        }
+    }
+    mcp_path = os.path.join(plugin_dir, ".mcp.json")
+    with open(mcp_path, "w") as f:
+        json.dump(mcp_config, f, indent=2)
+        f.write("\n")
+
+    # Copy global skills into plugin
     staged = []
     for name in sorted(_GLOBAL_SKILL_NAMES):
         src = os.path.join(skills_source, name)
-        dst = os.path.join(dest_dir, name)
+        dst = os.path.join(skills_dir, name)
         if not os.path.isdir(src):
             continue
-        # Always overwrite staged skills (they're a staging area, not user-edited)
+        # Always overwrite (staging area, not user-edited)
         if os.path.isdir(dst):
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
         staged.append(name)
 
     if staged:
-        print(f"  Staged {len(staged)} global skills to .ai/host-skills/")
+        print(f"  Staged brain plugin to .ai/brain-plugin/ ({len(staged)} skills + MCP config)")
 
 
 def init_ace_folders(brain_path):
@@ -320,7 +355,7 @@ def run_wizard(brain_path):
     print("[1/5] Initialising brain tools...")
     init_core(brain_path)
     init_vault_skills(brain_path)
-    stage_global_skills(brain_path)
+    stage_brain_plugin(brain_path)
     print()
 
     # Step 2: ACE folders
@@ -455,24 +490,24 @@ def _print_welcome(brain_path):
     print('    "I\'ve had an idea about X" — capture a thought')
     print()
 
-    # Host skill install guidance
-    host_skills_dir = os.path.join(brain_path, ".ai", "host-skills")
-    if os.path.isdir(host_skills_dir):
-        skills = sorted(d for d in os.listdir(host_skills_dir)
-                       if os.path.isdir(os.path.join(host_skills_dir, d)))
+    # Host plugin install guidance
+    plugin_dir = os.path.join(brain_path, ".ai", "brain-plugin")
+    if os.path.isdir(plugin_dir):
+        skills_dir = os.path.join(plugin_dir, "skills")
+        skills = sorted(d for d in os.listdir(skills_dir)
+                       if os.path.isdir(os.path.join(skills_dir, d))) if os.path.isdir(skills_dir) else []
         if skills:
-            print("  ── Host Claude Code skills ──")
+            print("  ── Host Claude Code plugin ──")
             print()
-            print("  Global skills let Claude Code access your brain from any project.")
-            print(f"  Available: {', '.join(skills)}")
+            print("  A plugin has been staged with global skills and MCP config.")
+            print(f"  Skills: {', '.join(skills)}")
             print()
-            print("  To install on your host machine, run:")
+            print("  To install on your host machine, run one command:")
             print()
-            print(f"    cp -r {brain_path}/.ai/host-skills/brain-* ~/.claude/skills/")
+            print(f"    claude plugin add {brain_path}/.ai/brain-plugin")
             print()
-            print("  Then register the brain MCP server:")
-            print()
-            print("    claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server")
+            print("  This registers the brain MCP server and installs all global")
+            print("  skills so Claude Code can access your brain from any project.")
             print()
 
     print("-" * 60)
@@ -488,7 +523,7 @@ def run_auto(brain_path):
     print("brain-init: auto-initialising vault...")
     init_core(brain_path)
     init_vault_skills(brain_path)
-    stage_global_skills(brain_path)
+    stage_brain_plugin(brain_path)
     print("brain-init: done.")
 
 
