@@ -17,13 +17,12 @@ docker run --rm -it \
   brain-init
 
 # 3. Start the container (reads config from vault, runs detached)
-docker run -d --name brain \
+docker run -d --name second-brain --restart unless-stopped \
   -v ~/Documents/brain:/brain \
-  -v brain-claude-data:/home/coder/.claude \
-  -v brain-code-server:/home/coder/.local/share/code-server \
-  -v brain-zsh-data:/home/coder/.zsh-data \
+  -v second-brain-claude:/home/coder/.claude \
+  -v second-brain-code-server:/home/coder/.local/share/code-server \
+  -v second-brain-zsh:/home/coder/.zsh-data \
   -p 8080:8080 -p 7779:7779 -p 7780:7780 \
-  --restart unless-stopped \
   kitchencoder/second-brain:latest
 
 # 4. Open the browser UI
@@ -33,18 +32,19 @@ open http://localhost:8080
 The wizard lets you pick your model provider and embedding model. It offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run it any time:
 
 ```bash
-docker exec -it brain brain-init
+docker exec -it second-brain brain-init
 ```
 
 ### Connect to host Claude Code
 
-`brain-init` stages a Claude Code plugin inside the vault with global skills and MCP server config. Install it on your host with one command:
+`brain-init` stages a Claude Code plugin inside the vault with global skills and MCP server config. Install it on your host with two commands:
 
 ```bash
-claude plugin add ~/Documents/brain/.ai/brain-plugin
+claude plugin marketplace add ~/Documents/brain/.ai
+claude plugin install second-brain
 ```
 
-This registers the brain MCP server and installs global skills (brain-context, brain-save, brain-project, brain-hygiene) so Claude Code can access your brain from any project.
+This registers the brain MCP server and installs all global skills so Claude Code can access your brain from any project.
 
 ### Custom configuration
 
@@ -69,7 +69,7 @@ docker compose up -d
 ```bash
 # Pull and restart
 docker pull kitchencoder/second-brain:latest
-docker rm -f brain
+docker rm -f second-brain
 # Re-run the docker run command from Quick Start step 3 above
 
 # Or with docker compose:
@@ -113,7 +113,7 @@ Claude Code reads `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_M
 # .env
 ANTHROPIC_BASE_URL=http://model-runner.docker.internal
 ANTHROPIC_AUTH_TOKEN=ollama
-ANTHROPIC_MODEL=minimax-2.5:latest
+ANTHROPIC_MODEL=docker.io/ai/qwen2.5:7B-Q4_0
 ```
 
 To switch to real Claude, remove `ANTHROPIC_BASE_URL` and set a real `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`.
@@ -122,9 +122,9 @@ To switch to real Claude, remove `ANTHROPIC_BASE_URL` and set a real `ANTHROPIC_
 
 | Volume | Contents |
 |---|---|
-| `claude-data` | Claude Code user config (`~/.claude/`) — settings, session history |
-| `code-server-data` | VS Code UI state — open tabs, panel layout |
-| `zsh-data` | Zsh history across sessions |
+| `second-brain-claude` | Claude Code user config (`~/.claude/`) — settings, session history |
+| `second-brain-code-server` | VS Code UI state — open tabs, panel layout |
+| `second-brain-zsh` | Zsh history across sessions |
 
 ---
 
@@ -134,16 +134,16 @@ Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 # Drop into brain shell
-alias brain='docker exec -it brain zsh'
+alias brain='docker exec -it second-brain zsh'
 
 # Semantic search from host
-alias bsearch='docker exec brain brain-search'
+alias bsearch='docker exec second-brain brain-search'
 
 # Index brain from host
-alias bindex='docker exec brain brain-index run'
+alias bindex='docker exec second-brain brain-index run'
 
 # Watch mode (background indexing)
-alias bwatch='docker exec -d brain brain-index watch'
+alias bwatch='docker exec -d second-brain brain-index watch'
 ```
 
 After adding: `source ~/.zshrc`
@@ -263,11 +263,11 @@ Now configure each client:
 
 | Client | Transport | How it connects |
 |---|---|---|
-| Claude Code | stdio | `docker exec -i brain brain-mcp-server` |
-| Claude Code | HTTP | `http://localhost:7780/mcp` |
-| Claude Desktop | stdio | `docker exec -i brain brain-mcp-server` |
-| Open WebUI | HTTP | `http://<host>:7780/mcp` |
-| LM Studio | HTTP | `http://localhost:7780/mcp` |
+| Claude Code | stdio | `docker exec -i second-brain brain-mcp-server` |
+| Claude Code | HTTP | `http://localhost:7780/mcp/` |
+| Claude Desktop | stdio | `docker exec -i second-brain brain-mcp-server` |
+| Open WebUI | HTTP | `http://<host>:7780/mcp/` |
+| LM Studio | HTTP | `http://localhost:7780/mcp/` |
 | Docker MCP Toolkit | either | Gateway manages its own container |
 
 ### Claude Code
@@ -275,7 +275,7 @@ Now configure each client:
 **Option A — HTTP (recommended when HTTP transport is enabled):**
 
 ```bash
-claude mcp add --transport http --scope user brain http://localhost:7780/mcp
+claude mcp add --transport http --scope user brain http://localhost:7780/mcp/
 ```
 
 Or in `.mcp.json` (shared with your team):
@@ -285,7 +285,7 @@ Or in `.mcp.json` (shared with your team):
   "mcpServers": {
     "brain": {
       "type": "http",
-      "url": "http://localhost:7780/mcp"
+      "url": "http://localhost:7780/mcp/"
     }
   }
 }
@@ -294,7 +294,7 @@ Or in `.mcp.json` (shared with your team):
 **Option B — stdio (works without HTTP transport):**
 
 ```bash
-claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server
+claude mcp add --scope user brain -- docker exec -i second-brain brain-mcp-server
 ```
 
 Verify it's registered:
@@ -320,7 +320,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "brain": {
       "type": "http",
-      "url": "http://localhost:7780/mcp"
+      "url": "http://localhost:7780/mcp/"
     }
   }
 }
@@ -333,7 +333,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "brain": {
       "command": "docker",
-      "args": ["exec", "-i", "brain", "brain-mcp-server"]
+      "args": ["exec", "-i", "second-brain", "brain-mcp-server"]
     }
   }
 }
@@ -347,8 +347,8 @@ Open WebUI connects over HTTP. With the recommended setup above (HTTP enabled, p
 
 **Configure in Open WebUI:** Admin Panel → Settings → Tools → MCP Servers:
 
-- **URL:** `http://host.docker.internal:7780/mcp` (Open WebUI running on the host or in Docker for Mac/Windows)
-- **URL:** `http://brain:7780/mcp` (Open WebUI and brain on the same Docker network)
+- **URL:** `http://host.docker.internal:7780/mcp/` (Open WebUI running on the host or in Docker for Mac/Windows)
+- **URL:** `http://second-brain:7780/mcp/` (Open WebUI and brain on the same Docker network)
 
 **If Open WebUI and brain are in separate compose files**, create a shared network so they can reach each other by service name:
 
@@ -369,7 +369,7 @@ networks:
     external: true
 ```
 
-Then use `http://brain:7780/mcp` as the URL in Open WebUI.
+Then use `http://second-brain:7780/mcp/` as the URL in Open WebUI.
 
 ### LM Studio
 
@@ -377,7 +377,7 @@ LM Studio runs on the host and connects to the brain's HTTP transport.
 
 With the recommended setup above (HTTP enabled, port 7780 exposed), add an MCP server in LM Studio:
 
-- **URL:** `http://localhost:7780/mcp`
+- **URL:** `http://localhost:7780/mcp/`
 - **Transport:** Streamable HTTP
 
 LM Studio requires a model that supports tool/function calling (e.g. Qwen 2.5, Llama 3.x, Mistral). The model must be loaded with tool use enabled for the brain tools to appear.
@@ -447,7 +447,7 @@ For Claude Desktop, the easiest path is Docker Desktop → MCP Toolkit → MCP C
 | `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for HTTP mode |
 | `BRAIN_MCP_PORT` | `7780` | Port for HTTP mode |
 
-The HTTP endpoint is `http://<host>:<port>/mcp` and implements the MCP Streamable HTTP protocol (JSON-RPC over HTTP POST with SSE responses).
+The HTTP endpoint is `http://<host>:<port>/mcp/` and implements the MCP Streamable HTTP protocol (JSON-RPC over HTTP POST with SSE responses).
 
 ### Available tools
 
@@ -469,8 +469,32 @@ The HTTP endpoint is `http://<host>:<port>/mcp` and implements the MCP Streamabl
 
 There are two tiers of skills:
 
+- **Global** (`skills/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only. Installed via the Claude Code plugin.
 - **Vault-level** (`brain-skills/`) — auto-installed by `brain-init` into `<vault>/.claude/skills/`. Load when Claude Code is opened at the vault root. Use MCP for semantic search and direct filesystem tools for file I/O.
-- **Global** (`skills/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only.
+
+### Global skills (host install via plugin)
+
+Global skills let Claude Code access your brain from any project on your host machine (e.g. while coding, save context back to the brain). `brain-init` stages them as a Claude Code plugin:
+
+```bash
+claude plugin marketplace add ~/Documents/brain/.ai
+claude plugin install second-brain
+```
+
+This also registers the brain MCP server — no separate `claude mcp add` needed.
+
+| Skill | Trigger | What it does |
+|---|---|---|
+| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks |
+| `brain-connect` | "Find connections for this note" | Surfaces related notes, offers to patch wikilinks |
+| `brain-context` | Working on a named topic or project | Searches the brain for prior context before starting work |
+| `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
+| `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort, flags orphans and missing stubs |
+| `brain-project` | "start a new project" | Scaffolds a new effort with context primer |
+| `brain-save` | "remember", "save", "capture" | Saves something to the brain with correct frontmatter and placement |
+| `brain-setup` | "Set up my brain" / first-time vault setup | Guided vault setup flow with pre-flight check and step-by-step instructions |
+| `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
+| `brain-triage` | "Process my inbox" | Works through `status: raw` notes one at a time — promote, archive, or defer |
 
 ### Vault-level skills (auto-installed)
 
@@ -478,37 +502,15 @@ These are installed automatically when the container starts or when you run `bra
 
 | Skill | Trigger | What it does |
 |---|---|---|
-| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks |
-| `brain-connect` | "Find connections for this note" | Surfaces related notes, offers to patch wikilinks |
-| `brain-triage` | "Process my inbox" | Works through `status: raw` notes one at a time — promote, archive, or defer |
-| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
 | `brain-daily` | "Start my day" | Creates today's daily note, carries forward open items, shows inbox count |
-| `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort, flags orphans and missing stubs |
 | `brain-extract` | "Pull the ideas out of this note" | Extracts atomic ideas from a long note into separate Cards with wikilinks back |
-| `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
-| `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
-| `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
-
-### Global skills (host install via plugin)
-
-Global skills let Claude Code access your brain from any project on your host machine (e.g. while coding, save context back to the brain). `brain-init` stages them as a Claude Code plugin:
-
-```bash
-claude plugin add ~/Documents/brain/.ai/brain-plugin
-```
-
-This also registers the brain MCP server — no separate `claude mcp add` needed.
-
-| Skill | Trigger | What it does |
-|---|---|---|
-| `brain-context` | Working on a named topic or project | Searches the brain for prior context before starting work |
-| `brain-save` | "remember", "save", "capture" | Saves something to the brain with correct frontmatter and placement |
-| `brain-project` | "start a new project" | Scaffolds a new effort with context primer |
 | `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter, orphaned notes, broken wikilinks, stale drafts |
+| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
+| `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
 
 ### Claude Desktop / claude.ai
 
-Skills are uploaded as ZIP files:
+Global skills can be uploaded as ZIP files:
 
 ```bash
 cd skills && for d in brain-*/; do zip -r "${d%/}.zip" "$d"; done
@@ -526,8 +528,6 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host (shell export, not in `.env`) |
 | `EMBEDDING_BASE_URL` | Docker Model Runner | OpenAI-compatible embedding endpoint |
 | `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name — dimension auto-detected at index time |
-| `CHAT_BASE_URL` | Docker Model Runner | Chat completions endpoint |
-| `CHAT_MODEL` | `llama3.2` | Chat model for brain REST API |
 | `OPENAI_API_KEY` | `local` | API key (any non-empty string for local endpoints) |
 | `BRAIN_MCP_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
 | `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for MCP HTTP mode |
@@ -536,7 +536,7 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `CODE_SERVER_PORT` | `8080` | Port for the browser VS Code UI |
 | `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint — set to `http://model-runner.docker.internal` for local |
 | `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token — use `ollama` for Docker Model Runner |
-| `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `minimax-2.5:latest` |
+| `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `docker.io/ai/qwen2.5:7B-Q4_0` |
 | `BRAVE_API_KEY` | — | Optional — enables web search in Claude Code via Brave Search MCP |
 
 ### Choosing an embedding model
@@ -557,14 +557,12 @@ For Docker Model Runner, prefix model names with `ai/` (e.g. `ai/mxbai-embed-lar
 
 ```bash
 EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
-CHAT_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
 ### Using LM Studio
 
 ```bash
 EMBEDDING_BASE_URL=http://host.docker.internal:1234/v1
-CHAT_BASE_URL=http://host.docker.internal:1234/v1
 ```
 
 ## Brain structure
