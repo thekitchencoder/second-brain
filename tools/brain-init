@@ -47,6 +47,10 @@ _GLOBAL_SKILLS_SOURCE_CANDIDATES = [
 ]
 
 # Skills that belong in the vault (.claude/skills/) — the brain-skills tier
+# TODO: Most of these could be promoted to global (MCP-only) skills.
+# 6 of 10 use filesystem tools only for secondary checks that brain_query
+# can handle. Blockers: brain-extract (needs Edit), brain-rename (has mv path).
+# See PR #4 review for the full audit.
 _VAULT_SKILL_NAMES = {
     "brain-capture", "brain-connect", "brain-create-effort", "brain-daily",
     "brain-effort", "brain-extract", "brain-rename", "brain-reorganise",
