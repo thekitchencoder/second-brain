@@ -7,12 +7,9 @@ description: Use when the user wants a status overview of an effort, asks "where
 
 Surface all notes belonging to an effort, grouped by status. Identify gaps and orphans.
 
-## Path Translation
+## MCP-Only Skill
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
-
-- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
-- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
+This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
 
 ## Flow
 
@@ -20,22 +17,22 @@ Surface all notes belonging to an effort, grouped by status. Identify gaps and o
 
 Accept: effort name, slug, or directory path.
 
-- Glob for `Efforts/<slug>.md`
-- If ambiguous, run `brain_search(effort name)` and confirm with user
+- `brain_search(query="<slug>")` to find the effort note
+- If ambiguous, confirm with user
 
-Read `Efforts/<slug>.md`.
+Read the effort note with `brain_read(filepath)`.
 
-### 2. Collect all related notes (four passes, run in parallel)
+### 2. Collect all related notes (three passes, run in parallel)
 
-**a. Directory scan** — Glob `Efforts/<slug>/**/*.md` — all notes physically in the effort folder
+**a. Semantic search** — `brain_search(effort name)` — notes elsewhere that discuss this effort
 
-**b. Semantic search** — `brain_search(effort name)` — notes elsewhere that discuss this effort
+**b. Tag search** — `brain_query(tag=<effort-slug>)` — notes explicitly tagged to this effort. This also catches notes physically in the effort folder since they are typically tagged.
 
-**c. Tag search** — `brain_query(tag=<effort-slug>)` — notes explicitly tagged to this effort
+**c. Backlinks** — `brain_backlinks(Efforts/<slug>.md)` — notes that wikilink to the effort note
 
-**d. Backlinks** — `brain_backlinks(Efforts/<slug>.md)` — notes that wikilink to the effort note
+Deduplicate across all three passes.
 
-Deduplicate across all four passes.
+**Note:** Notes physically in `Efforts/<slug>/` but without the tag may be missed. brain-hygiene flags these as orphans during vault audits.
 
 ### 3. Group by status
 

@@ -7,12 +7,9 @@ description: Use when the user wants to create a new effort, set up an effort fo
 
 Scaffold a new effort note with correct frontmatter, intensity state, and optional context primer.
 
-## Path Translation
+## MCP-Only Skill
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
-
-- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
-- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
+This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
 
 ## Flow
 
@@ -24,13 +21,11 @@ If the user hasn't provided them, ask:
 
 Derive a kebab-case slug from the name (e.g. `Jobs Guarantee` → `jobs-guarantee`).
 
-### 2. Check for duplicates — do both checks NOW
+### 2. Check for duplicates
 
-**Call `brain_search(query=<slug>)` NOW.** Do not skip. If a strong match is returned, surface it and ask: "An effort matching this already exists — do you want to update it instead?"
+**Call `brain_search(query=<slug>)` NOW.** Do not skip. If a strong match is returned at `Efforts/<slug>.md`, the effort already exists — surface it and ask: "An effort matching this already exists — do you want to update it instead?"
 
-**Call `Glob(pattern="Efforts/<slug>.md")` NOW.** If the file exists, stop and surface it. Do not create a duplicate.
-
-Only proceed to step 3 if both checks return no match.
+Only proceed to step 3 if the search returns no exact match at the expected path.
 
 ### 3. Create the effort note
 
@@ -85,7 +80,7 @@ Created: Efforts/<slug>.md
 ## Rules
 
 - **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit`.
-- **Always check for duplicates** — both `brain_search` AND `Glob` before creating.
+- **Always check for duplicates** — run `brain_search` and check results for an exact path match at `Efforts/<slug>.md`.
 - **`intensity: on`** is always set on creation — this is the default active state.
 - **Effort note at `Efforts/<slug>.md`** — never inside a subfolder.
 - **Context primer at `Efforts/<slug>/`** — always in the subfolder, never at root.
@@ -104,5 +99,5 @@ Without this skill, agents either:
 |---|---|
 | Using `brain-project` for a plain effort | Use this skill — brain-project is for software projects with dev repos |
 | Calling `brain_write` after `brain_create` | Use `brain_edit(op=replace_section)` and `update_frontmatter` |
-| Skipping the duplicate check | Always run both `brain_search` AND `Glob` first |
+| Skipping the duplicate check | Always run `brain_search`; check results for exact path match |
 | Not setting `intensity: on` | Set it in `update_frontmatter` — it won't be in the template yet for existing vaults |

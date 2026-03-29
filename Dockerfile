@@ -91,6 +91,7 @@ EXPOSE 7779 8080
 # Seed files for Claude Code user config — copied idempotently at startup
 # so settings survive rebuilds once edited. See tools/entrypoint.sh.
 COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
+COPY --chown=coder:coder claude/plugin-claude.md claude/vault-claude.md /usr/local/lib/brain-tools/claude/
 COPY --chown=coder:coder skills/ /usr/local/lib/brain-tools/claude-seed/skills/
 COPY --chown=coder:coder brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
 # Pre-create volume-mounted directories owned by coder so Docker inherits

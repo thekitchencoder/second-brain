@@ -45,21 +45,22 @@ _GLOBAL_SKILLS_SOURCE_CANDIDATES = [
     "/usr/local/lib/brain-tools/claude-seed/skills",  # container (both tiers merged)
     os.path.join(_REPO_ROOT, "skills"),               # local dev (global tier)
 ]
+_CLAUDE_TEMPLATES_CANDIDATES = [
+    "/usr/local/lib/brain-tools/claude",              # inside container
+    os.path.join(_REPO_ROOT, "claude"),               # local dev
+]
 
-# Skills that belong in the vault (.claude/skills/) — the brain-skills tier
-# TODO: Most of these could be promoted to global (MCP-only) skills.
-# 6 of 10 use filesystem tools only for secondary checks that brain_query
-# can handle. Blockers: brain-extract (needs Edit), brain-rename (has mv path).
-# See PR #4 review for the full audit.
+# Vault skills need direct filesystem access (mv, Glob date patterns, Edit).
+# Global skills are MCP-only — they work from any Claude Code session with the brain plugin.
 _VAULT_SKILL_NAMES = {
-    "brain-capture", "brain-connect", "brain-create-effort", "brain-daily",
-    "brain-effort", "brain-extract", "brain-rename", "brain-reorganise",
-    "brain-surface", "brain-triage",
+    "brain-daily", "brain-extract", "brain-hygiene",
+    "brain-rename", "brain-reorganise",
 }
 
-# Skills that belong on the host (~/.claude/skills/) — the global tier
 _GLOBAL_SKILL_NAMES = {
-    "brain-context", "brain-hygiene", "brain-project", "brain-save",
+    "brain-capture", "brain-connect", "brain-context",
+    "brain-create-effort", "brain-effort", "brain-project",
+    "brain-save", "brain-surface", "brain-triage",
 }
 
 ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
@@ -253,7 +254,7 @@ def init_core(brain_path):
 
 
 def init_vault_skills(brain_path):
-    """Copy vault-level skills into <vault>/.claude/skills/."""
+    """Copy vault-level skills and CLAUDE.md into <vault>/.claude/."""
     skills_source = _find_source(_SKILLS_SOURCE_CANDIDATES)
     if skills_source is None:
         print("  No skills source found, skipping vault skills.")
@@ -277,6 +278,15 @@ def init_vault_skills(brain_path):
         print(f"  Installed {len(installed)} vault skills to .claude/skills/")
     else:
         print(f"  Vault skills already installed.")
+
+    # Seed vault-level CLAUDE.md (filesystem extension for vault sessions)
+    claude_templates = _find_source(_CLAUDE_TEMPLATES_CANDIDATES)
+    if claude_templates:
+        vault_claude_src = os.path.join(claude_templates, "vault-claude.md")
+        vault_claude_dst = os.path.join(brain_path, ".claude", "CLAUDE.md")
+        if os.path.isfile(vault_claude_src) and not os.path.isfile(vault_claude_dst):
+            shutil.copy2(vault_claude_src, vault_claude_dst)
+            print(f"  Seeded .claude/CLAUDE.md (vault-level instructions)")
 
 
 def stage_brain_plugin(brain_path):
@@ -334,6 +344,14 @@ def stage_brain_plugin(brain_path):
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
         staged.append(name)
+
+    # Copy plugin-level CLAUDE.md (MCP-only guidance for host sessions)
+    claude_templates = _find_source(_CLAUDE_TEMPLATES_CANDIDATES)
+    if claude_templates:
+        plugin_claude_src = os.path.join(claude_templates, "plugin-claude.md")
+        plugin_claude_dst = os.path.join(plugin_dir, "CLAUDE.md")
+        if os.path.isfile(plugin_claude_src):
+            shutil.copy2(plugin_claude_src, plugin_claude_dst)
 
     if staged:
         print(f"  Staged brain plugin to .ai/brain-plugin/ ({len(staged)} skills + MCP config)")
