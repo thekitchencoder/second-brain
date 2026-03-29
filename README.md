@@ -4,45 +4,75 @@ Docker container for brain management: zk, semantic search, and MCP server for C
 
 ## Quick start
 
+No repo clone needed — the Docker image has everything.
+
 ```bash
-# Set your vault path in the shell — required before docker compose up
-export BRAIN_HOST_PATH=~/Documents/brain   # edit to match your vault location
-# Add this to ~/.zshrc or ~/.bashrc to persist across sessions
+# 1. Create a directory for your vault (or use an existing notes folder)
+mkdir -p ~/Documents/brain
 
-# Copy and configure container environment
-cp .env.example .env
-# Edit .env for EMBEDDING_MODEL, CHAT_MODEL, etc. if needed
+# 2. Start the container
+docker run -d --name brain \
+  -v ~/Documents/brain:/brain \
+  -v brain-claude-data:/home/coder/.claude \
+  -v brain-code-server:/home/coder/.local/share/code-server \
+  -v brain-zsh-data:/home/coder/.zsh-data \
+  -p 8080:8080 -p 7779:7779 \
+  --restart unless-stopped \
+  kitchencoder/second-brain:latest
 
-# Start (pulls image from Docker Hub)
-docker compose up -d
-
-# Browser UI — VS Code with brain tools and Claude Code
+# 3. Open the browser UI
 open http://localhost:8080
-
-# Or shell into the container directly
-docker exec -it brain zsh
-
-# Initialise a brain (first time only)
-brain-init
-
-# First-time vault structure setup — paste prompts/setup.md into a Claude session
-
-# Index for semantic search
-brain-index run
 ```
+
+The vault is automatically initialised on first start. To customise models, create the folder structure, or install host skills, run the interactive setup wizard:
+
+```bash
+docker exec -it brain brain-init
+```
+
+### Connect to host Claude Code
+
+To use brain skills from any Claude Code session on your host machine:
+
+```bash
+# Install global skills (after running brain-init inside the container)
+cp -r ~/Documents/brain/.ai/host-skills/brain-* ~/.claude/skills/
+
+# Register the MCP server
+claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server
+```
+
+### Custom configuration
+
+The container works out of the box with Docker Model Runner. For Ollama, LM Studio, or Anthropic API, run `brain-init` inside the container — it offers presets for common setups and writes a `.env` file to your vault. Changes take effect on container restart.
+
+You can also create or edit the `.env` file manually at `<vault>/.env`. See the [Configuration](#configuration) section for all available variables.
+
+### Using docker compose
+
+If you prefer docker compose (e.g. for development), clone this repo and use:
+
+```bash
+export BRAIN_HOST_PATH=~/Documents/brain
+cp .env.example .env    # edit as needed
+docker compose up -d
+```
+
+`BRAIN_HOST_PATH` must be exported in your shell — it is not reliably read from `.env` across all platforms.
 
 ## Upgrading
 
 ```bash
-# 1. Pull the new container image
+# Pull and restart
+docker pull kitchencoder/second-brain:latest
+docker rm -f brain
+# Re-run the docker run command from Quick Start above
+
+# Or with docker compose:
 docker compose pull && docker compose up -d
-
-# 2. Update templates in your vault
-cp /path/to/second-brain/zk/templates/*.md $BRAIN_HOST_PATH/.zk/templates/
-
-# 3. Update skills (if copied, not symlinked — see Skills section below)
-cp -r skills/brain-* ~/.claude/skills/
 ```
+
+Your vault data, Claude config, and shell history are preserved in named volumes. To update templates and skills inside an existing vault, run `brain-init` again — it will update staged host skills and leave existing config untouched.
 
 No re-indexing required unless the release notes say otherwise.
 
@@ -433,36 +463,14 @@ The HTTP endpoint is `http://<host>:<port>/mcp` and implements the MCP Streamabl
 
 ## Skills
 
-There are two sets of skills:
+There are two tiers of skills:
 
-- **`skills/`** — installed into `~/.claude/skills/` (or Claude Desktop). These use the MCP server and work from any project directory.
-- **`brain-skills/`** — installed into `$BRAIN_HOST_PATH/.claude/skills/`. These load only when Claude Code is opened at the vault root. They use MCP for semantic search and direct filesystem tools for file I/O.
+- **Vault-level** (`brain-skills/`) — auto-installed by `brain-init` into `<vault>/.claude/skills/`. Load when Claude Code is opened at the vault root. Use MCP for semantic search and direct filesystem tools for file I/O.
+- **Global** (`skills/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only.
 
-### Claude Code — global skills (`skills/`)
+### Vault-level skills (auto-installed)
 
-Copy (one-off):
-```bash
-cp -r skills/brain-* ~/.claude/skills/
-```
-
-Or symlink so skills stay in sync with the repo:
-```bash
-for d in skills/brain-*/; do ln -sf "$PWD/$d" ~/.claude/skills/; done
-```
-
-### Claude Code — vault-level skills (`brain-skills/`)
-
-These load automatically when Claude Code is opened inside the vault.
-
-Copy (one-off):
-```bash
-cp -r brain-skills/brain-* $BRAIN_HOST_PATH/.claude/skills/
-```
-
-Or symlink:
-```bash
-for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/skills/"; done
-```
+These are installed automatically when the container starts or when you run `brain-init`. No manual setup needed.
 
 | Skill | Trigger | What it does |
 |---|---|---|
@@ -476,6 +484,26 @@ for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/sk
 | `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
 | `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
 | `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
+
+### Global skills (host install)
+
+Global skills let Claude Code access your brain from any project on your host machine (e.g. while coding, save context back to the brain). `brain-init` stages them into the vault for easy installation:
+
+```bash
+cp -r ~/Documents/brain/.ai/host-skills/brain-* ~/.claude/skills/
+```
+
+| Skill | Trigger | What it does |
+|---|---|---|
+| `brain-context` | Working on a named topic or project | Searches the brain for prior context before starting work |
+| `brain-save` | "remember", "save", "capture" | Saves something to the brain with correct frontmatter and placement |
+| `brain-project` | "start a new project" | Scaffolds a new effort with context primer |
+| `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter, orphaned notes, broken wikilinks, stale drafts |
+
+If you have the repo cloned, you can also symlink for auto-updates:
+```bash
+for d in skills/brain-*/; do ln -sf "$PWD/$d" ~/.claude/skills/; done
+```
 
 ### Claude Desktop / claude.ai
 
