@@ -7,12 +7,9 @@ description: Use when the user asks what they've set aside, wants to review park
 
 Surface efforts with `intensity: simmering` — work that has been set aside but not abandoned. Present them oldest-first with any saved next steps, and offer to resume one.
 
-## Path Translation
+## MCP-Only Skill
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
-
-- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
-- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
+This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
 
 ## Intensity Values
 
@@ -32,7 +29,9 @@ Filter the returned notes to:
 - `type: effort`
 - `intensity: simmering`
 
-If no results have `intensity` set at all, also surface efforts with `status: active` that haven't been mentioned recently — **Call `Grep(pattern="intensity: simmering", path="Efforts/", glob="*.md")` NOW** as a fallback.
+If the query results don't include `intensity` in the excerpt, **call `brain_read(filepath)` for each effort** to check the frontmatter for `intensity: simmering`.
+
+If no results have `intensity` set at all, also surface efforts with `status: active` that haven't been mentioned recently — run an additional `brain_query(status="active")` filtered to `type: effort` and `brain_read` each to check for missing intensity fields.
 
 ### 2. Read each simmering effort
 
@@ -113,5 +112,5 @@ brain_edit(op=update_frontmatter, filepath=Efforts/<slug>.md, frontmatter={
 |---|---|
 | Showing only search excerpts | Call `brain_read` for each simmering effort |
 | Auto-resuming without asking | Always present list first, then offer actions |
-| Skipping efforts with no `intensity` field | Also Grep for `intensity: simmering` as fallback |
+| Skipping efforts with no `intensity` field | Also `brain_read` each active effort to check intensity field |
 | Forgetting to offer to capture `next_step` when setting simmering | Always prompt for it — this is the critical handoff context |

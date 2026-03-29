@@ -7,12 +7,9 @@ description: Use when the user mentions a topic, idea, project, meeting, or anyt
 
 Conversational idea capture with inline wiring after the user finishes editing.
 
-## Path Translation
+## MCP-Only Skill
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
-
-- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
-- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
+This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
 
 ## Flow
 
@@ -85,7 +82,7 @@ After the user confirms done:
 
 1. **Call `brain_search(query=<title>)` and `brain_related(filepath=<filepath>)` in parallel NOW.**
 2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related Notes")` — idempotent, safe to call without pre-checking
-3. If the note has a non-empty `effort:` field value: `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
+3. If the note has a non-empty `effort:` field value: verify the effort exists with `brain_search(query=<slug>)`, then `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
 4. Report: "Linked to 3 notes, added reference to `Efforts/jobs-guarantee.md`"
 
 ## Rules
@@ -105,5 +102,5 @@ After the user confirms done:
 | Calling `brain_write` after `brain_create` | Use `brain_edit(op=replace_section)` to populate content |
 | Placing notes in the brain root | Always pass a `directory` to `brain_create` |
 | Wiring before the user is done | Wait for explicit confirmation before step 5 |
-| Wiring to a non-existent effort note | Glob for `Efforts/<slug>.md` before patching |
+| Wiring to a non-existent effort note | Use `brain_search(query="<slug>")` to verify the effort exists before patching |
 | Routing daily notes through this skill | Check step 0 — daily notes go to brain-daily |
