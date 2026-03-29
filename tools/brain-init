@@ -1,30 +1,118 @@
 #!/usr/bin/env python3
 """brain-init: initialise a second-brain for use with brain tools.
 
-Copies .zk config and templates into the brain directory.
-Creates .ai directory for embeddings.
-Copies .vscode workspace config for wiki-link navigation.
+Copies .zk config and templates, creates .ai directory, copies .vscode
+workspace config, installs vault-level skills, and optionally creates the
+ACE folder structure and generates a .env configuration file.
+
 Idempotent — safe to run multiple times.
+
+Usage:
+    brain-init [--auto] [path]
+
+    --auto   Non-interactive mode: apply defaults, skip optional steps.
+             Used by the container entrypoint on first start.
+    path     Vault directory (default: $BRAIN_PATH or /brain).
 """
+import glob
 import os
 import shutil
+import subprocess
 import sys
 
-# Source zk config: relative to this script in the repo, or baked path in container
+# ---------------------------------------------------------------------------
+# Source path resolution
+# ---------------------------------------------------------------------------
+
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
+
 _ZK_SOURCE_CANDIDATES = [
-    os.path.join(_REPO_ROOT, "zk"),            # local dev
-    "/usr/local/lib/brain-tools/zk",           # inside container
+    os.path.join(_REPO_ROOT, "zk"),             # local dev
+    "/usr/local/lib/brain-tools/zk",            # inside container
 ]
 _VSCODE_SOURCE_CANDIDATES = [
-    os.path.join(_REPO_ROOT, "vscode"),        # local dev
-    "/usr/local/lib/brain-tools/vscode",       # inside container
+    os.path.join(_REPO_ROOT, "vscode"),         # local dev
+    "/usr/local/lib/brain-tools/vscode",        # inside container
+]
+_SKILLS_SOURCE_CANDIDATES = [
+    "/usr/local/lib/brain-tools/claude-seed/skills",  # inside container
+    os.path.join(_REPO_ROOT, "brain-skills"),         # local dev (vault-level)
+]
+_GLOBAL_SKILLS_SOURCE_CANDIDATES = [
+    "/usr/local/lib/brain-tools/claude-seed/skills",  # container (both tiers merged)
+    os.path.join(_REPO_ROOT, "skills"),               # local dev (global tier)
 ]
 
+# Skills that belong in the vault (.claude/skills/) — the brain-skills tier
+_VAULT_SKILL_NAMES = {
+    "brain-capture", "brain-connect", "brain-create-effort", "brain-daily",
+    "brain-effort", "brain-extract", "brain-rename", "brain-reorganise",
+    "brain-surface", "brain-triage",
+}
 
-def init_brain(brain_path: str) -> None:
-    zk_source = next((p for p in _ZK_SOURCE_CANDIDATES if os.path.isdir(p)), None)
+# Skills that belong on the host (~/.claude/skills/) — the global tier
+_GLOBAL_SKILL_NAMES = {
+    "brain-context", "brain-hygiene", "brain-project", "brain-save",
+}
+
+ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _find_source(candidates):
+    """Return the first existing directory from candidates, or None."""
+    return next((p for p in candidates if os.path.isdir(p)), None)
+
+
+def _is_interactive():
+    """True if stdin is a TTY (not piped or run from entrypoint)."""
+    return sys.stdin.isatty()
+
+
+def _ask(prompt, default="y"):
+    """Ask a yes/no question. Returns True for yes. Non-interactive → default."""
+    suffix = " [Y/n] " if default == "y" else " [y/N] "
+    try:
+        answer = input(prompt + suffix).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default == "y"
+    if not answer:
+        return default == "y"
+    return answer in ("y", "yes")
+
+
+def _ask_input(prompt, default=""):
+    """Ask for text input. Returns default if empty."""
+    display = f" [{default}]" if default else ""
+    try:
+        answer = input(f"{prompt}{display}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default
+    return answer or default
+
+
+def _count_md_files(path):
+    """Count markdown files in the vault (non-recursive in hidden dirs)."""
+    count = 0
+    for root, dirs, files in os.walk(path):
+        # Skip hidden directories
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        count += sum(1 for f in files if f.endswith(".md"))
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Core init steps (idempotent)
+# ---------------------------------------------------------------------------
+
+def init_core(brain_path):
+    """Copy .zk, create .ai, copy .vscode — the original brain-init logic."""
+    zk_source = _find_source(_ZK_SOURCE_CANDIDATES)
     if zk_source is None:
         print("Error: could not find zk config source directory.", file=sys.stderr)
         sys.exit(1)
@@ -33,29 +121,393 @@ def init_brain(brain_path: str) -> None:
     ai_dest = os.path.join(brain_path, ".ai")
 
     if os.path.isdir(zk_dest):
-        print(f".zk already exists at {zk_dest}, skipping.")
+        print(f"  .zk/ already exists, skipping.")
     else:
         shutil.copytree(zk_source, zk_dest)
-        print(f"Created {zk_dest}")
+        print(f"  Created .zk/ (config + {len(os.listdir(os.path.join(zk_dest, 'templates')))} templates)")
 
     os.makedirs(ai_dest, exist_ok=True)
-    print(f"Ensured {ai_dest} exists")
+    print(f"  Ensured .ai/ exists")
 
-    vscode_source = next((p for p in _VSCODE_SOURCE_CANDIDATES if os.path.isdir(p)), None)
+    vscode_source = _find_source(_VSCODE_SOURCE_CANDIDATES)
     if vscode_source is not None:
         vscode_dest = os.path.join(brain_path, ".vscode")
         if os.path.isdir(vscode_dest):
-            print(f".vscode already exists at {vscode_dest}, skipping.")
+            print(f"  .vscode/ already exists, skipping.")
         else:
             shutil.copytree(vscode_source, vscode_dest)
-            print(f"Created {vscode_dest}")
+            print(f"  Created .vscode/ (workspace config)")
 
-    print("Brain initialised.")
 
+def init_vault_skills(brain_path):
+    """Copy vault-level skills into <vault>/.claude/skills/."""
+    skills_source = _find_source(_SKILLS_SOURCE_CANDIDATES)
+    if skills_source is None:
+        print("  No skills source found, skipping vault skills.")
+        return
+
+    dest_dir = os.path.join(brain_path, ".claude", "skills")
+    os.makedirs(dest_dir, exist_ok=True)
+
+    installed = []
+    for name in sorted(_VAULT_SKILL_NAMES):
+        src = os.path.join(skills_source, name)
+        dst = os.path.join(dest_dir, name)
+        if not os.path.isdir(src):
+            continue
+        if os.path.isdir(dst):
+            continue
+        shutil.copytree(src, dst)
+        installed.append(name)
+
+    if installed:
+        print(f"  Installed {len(installed)} vault skills to .claude/skills/")
+    else:
+        print(f"  Vault skills already installed.")
+
+
+def stage_global_skills(brain_path):
+    """Stage global (host-level) skills into <vault>/.ai/host-skills/ for easy host install."""
+    skills_source = _find_source(_GLOBAL_SKILLS_SOURCE_CANDIDATES)
+    if skills_source is None:
+        return
+
+    dest_dir = os.path.join(brain_path, ".ai", "host-skills")
+    os.makedirs(dest_dir, exist_ok=True)
+
+    staged = []
+    for name in sorted(_GLOBAL_SKILL_NAMES):
+        src = os.path.join(skills_source, name)
+        dst = os.path.join(dest_dir, name)
+        if not os.path.isdir(src):
+            continue
+        # Always overwrite staged skills (they're a staging area, not user-edited)
+        if os.path.isdir(dst):
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        staged.append(name)
+
+    if staged:
+        print(f"  Staged {len(staged)} global skills to .ai/host-skills/")
+
+
+def init_ace_folders(brain_path):
+    """Create the ACE folder structure with .keep files."""
+    created = []
+    for folder in ACE_FOLDERS:
+        folder_path = os.path.join(brain_path, folder)
+        if not os.path.isdir(folder_path):
+            os.makedirs(folder_path)
+            # .keep ensures the folder is preserved in git
+            keep = os.path.join(folder_path, ".keep")
+            with open(keep, "w") as f:
+                pass
+            created.append(folder)
+    if created:
+        print(f"  Created folders: {', '.join(created)}")
+    else:
+        print(f"  All folders already exist.")
+
+
+def generate_env(brain_path, config):
+    """Write a .env file to the vault root."""
+    env_path = os.path.join(brain_path, ".env")
+    lines = [
+        "# Second Brain configuration",
+        "# Generated by brain-init — edit freely, changes take effect on container restart.",
+        "",
+        "# ── Embedding model (for semantic search) ────────────────────────────────────",
+        f"EMBEDDING_BASE_URL={config['embedding_base_url']}",
+        f"EMBEDDING_MODEL={config['embedding_model']}",
+        f"OPENAI_API_KEY={config.get('openai_api_key', 'local')}",
+        "",
+        "# ── Chat model (for brain REST API) ──────────────────────────────────────────",
+        f"CHAT_BASE_URL={config['chat_base_url']}",
+        f"CHAT_MODEL={config['chat_model']}",
+        "",
+        "# ── Claude Code (in-container LLM) ───────────────────────────────────────────",
+    ]
+    if config.get("anthropic_base_url"):
+        lines.append(f"ANTHROPIC_BASE_URL={config['anthropic_base_url']}")
+    if config.get("anthropic_auth_token"):
+        lines.append(f"ANTHROPIC_AUTH_TOKEN={config['anthropic_auth_token']}")
+    if config.get("anthropic_model"):
+        lines.append(f"ANTHROPIC_MODEL={config['anthropic_model']}")
+    if not config.get("anthropic_base_url"):
+        lines.append("# Using Anthropic API directly (set ANTHROPIC_API_KEY in your environment)")
+
+    lines.append("")
+    lines.append("# ── Optional ──────────────────────────────────────────────────────────────────")
+    lines.append("# BRAVE_API_KEY=          # Web search in Claude Code (https://brave.com/search/api/)")
+    lines.append("# BRAIN_MCP_TRANSPORT=http # Enable HTTP MCP transport on port 7780")
+    lines.append("")
+
+    with open(env_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"  Saved .env")
+
+
+# ---------------------------------------------------------------------------
+# Presets for environment configuration
+# ---------------------------------------------------------------------------
+
+PRESETS = {
+    "1": {
+        "name": "Docker Model Runner (default)",
+        "embedding_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
+        "embedding_model": "ai/mxbai-embed-large:latest",
+        "chat_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
+        "chat_model": "ai/llama3.2:latest",
+        "anthropic_base_url": "http://model-runner.docker.internal",
+        "anthropic_auth_token": "ollama",
+        "anthropic_model": "minimax-2.5:latest",
+    },
+    "2": {
+        "name": "Ollama",
+        "embedding_base_url": "http://host.docker.internal:11434/v1",
+        "embedding_model": "mxbai-embed-large",
+        "chat_base_url": "http://host.docker.internal:11434/v1",
+        "chat_model": "llama3.2",
+        "anthropic_base_url": "http://host.docker.internal:11434",
+        "anthropic_auth_token": "ollama",
+        "anthropic_model": "llama3.2",
+    },
+    "3": {
+        "name": "LM Studio",
+        "embedding_base_url": "http://host.docker.internal:1234/v1",
+        "embedding_model": "mxbai-embed-large",
+        "chat_base_url": "http://host.docker.internal:1234/v1",
+        "chat_model": "llama3.2",
+        "anthropic_base_url": "http://host.docker.internal:1234",
+        "anthropic_auth_token": "lm-studio",
+        "anthropic_model": "",
+    },
+    "4": {
+        "name": "Anthropic API (real Claude)",
+        "embedding_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
+        "embedding_model": "ai/mxbai-embed-large:latest",
+        "chat_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
+        "chat_model": "ai/llama3.2:latest",
+        "anthropic_base_url": "",
+        "anthropic_auth_token": "",
+        "anthropic_model": "",
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Interactive wizard
+# ---------------------------------------------------------------------------
+
+def run_wizard(brain_path):
+    """Interactive setup wizard — guides user through configuration."""
+    md_count = _count_md_files(brain_path)
+    is_fresh = md_count == 0 and not os.path.isdir(os.path.join(brain_path, ".zk"))
+
+    print()
+    print("=" * 60)
+    print("  Second Brain Setup")
+    print("=" * 60)
+    print()
+
+    if is_fresh:
+        print(f"  Vault: {brain_path} (empty — fresh start)")
+    else:
+        print(f"  Vault: {brain_path} ({md_count} notes found)")
+    print()
+
+    # Step 1: Core init (always)
+    print("[1/5] Initialising brain tools...")
+    init_core(brain_path)
+    init_vault_skills(brain_path)
+    stage_global_skills(brain_path)
+    print()
+
+    # Step 2: ACE folders
+    print("[2/5] Folder structure")
+    existing = [f for f in ACE_FOLDERS if os.path.isdir(os.path.join(brain_path, f))]
+    missing = [f for f in ACE_FOLDERS if f not in existing]
+
+    if not missing:
+        print(f"  All ACE folders already exist: {', '.join(ACE_FOLDERS)}")
+    else:
+        default = "y" if is_fresh else "n"
+        print(f"  The ACE structure organises notes into: {', '.join(ACE_FOLDERS)}")
+        if existing:
+            print(f"  Already exist: {', '.join(existing)}")
+            print(f"  Missing: {', '.join(missing)}")
+        if _ask("  Create folder structure?", default=default):
+            init_ace_folders(brain_path)
+        else:
+            print("  Skipped.")
+    print()
+
+    # Step 3: Environment configuration
+    print("[3/5] Environment configuration")
+    env_path = os.path.join(brain_path, ".env")
+    if os.path.isfile(env_path):
+        print(f"  .env already exists. ", end="")
+        if _ask("Regenerate?", default="n"):
+            config = _prompt_env_config()
+            generate_env(brain_path, config)
+        else:
+            print("  Keeping existing .env")
+    else:
+        print("  The container needs to know which models to use for embeddings and chat.")
+        print()
+        print("  Presets:")
+        for key, preset in PRESETS.items():
+            print(f"    {key}) {preset['name']}")
+        print(f"    5) Custom (enter endpoints manually)")
+        print()
+
+        choice = _ask_input("  Choose a preset", default="1")
+
+        if choice in PRESETS:
+            config = dict(PRESETS[choice])
+            name = config.pop("name")
+            print(f"  Using {name} defaults.")
+
+            # For Anthropic API preset, prompt for customisation
+            if choice == "4":
+                print("  Note: You'll need to set ANTHROPIC_API_KEY in the container environment.")
+                print("  Embedding/chat still need a local model (Docker Model Runner by default).")
+
+            generate_env(brain_path, config)
+        elif choice == "5":
+            config = _prompt_env_config()
+            generate_env(brain_path, config)
+        else:
+            print(f"  Unknown choice '{choice}', using Docker Model Runner defaults.")
+            config = dict(PRESETS["1"])
+            config.pop("name")
+            generate_env(brain_path, config)
+    print()
+
+    # Step 4: Index
+    print("[4/5] Search index")
+    if md_count > 0:
+        if _ask(f"  Index {md_count} notes for semantic search?", default="y"):
+            _run_index(brain_path)
+        else:
+            print("  Skipped. Run 'brain-index run' later, or the background watcher will handle it.")
+    else:
+        print("  No notes to index yet. The background watcher will index as you add notes.")
+    print()
+
+    # Step 5: Done
+    print("[5/5] Setup complete!")
+    _print_welcome(brain_path)
+
+
+def _prompt_env_config():
+    """Prompt for each endpoint individually."""
+    dmr = "http://model-runner.docker.internal/engines/llama.cpp/v1"
+    config = {
+        "embedding_base_url": _ask_input("  Embedding endpoint", default=dmr),
+        "embedding_model": _ask_input("  Embedding model", default="ai/mxbai-embed-large:latest"),
+        "chat_base_url": _ask_input("  Chat endpoint", default=dmr),
+        "chat_model": _ask_input("  Chat model", default="ai/llama3.2:latest"),
+        "openai_api_key": "local",
+        "anthropic_base_url": _ask_input("  Claude Code LLM endpoint (blank for Anthropic API)",
+                                          default="http://model-runner.docker.internal"),
+        "anthropic_auth_token": _ask_input("  Claude Code auth token", default="ollama"),
+        "anthropic_model": _ask_input("  Claude Code model", default="minimax-2.5:latest"),
+    }
+    return config
+
+
+def _run_index(brain_path):
+    """Run brain-index as a subprocess."""
+    try:
+        env = os.environ.copy()
+        env["BRAIN_PATH"] = brain_path
+        result = subprocess.run(
+            ["brain-index", "run"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            # Count indexed files from output
+            print(f"  Indexing complete.")
+        else:
+            print(f"  Indexing returned non-zero exit code. This is OK if the embedding")
+            print(f"  model is not yet available — the background watcher will retry.")
+    except FileNotFoundError:
+        print("  brain-index not found on PATH. Index manually: brain-index run")
+    except subprocess.TimeoutExpired:
+        print("  Indexing timed out (>5 min). The background watcher will continue.")
+
+
+def _print_welcome(brain_path):
+    """Print next steps and host skill install instructions."""
+    print()
+    print("-" * 60)
+    print()
+    print("  Open http://localhost:8080 for VS Code in the browser.")
+    print("  Run 'claude' in the terminal to start a Claude Code session.")
+    print()
+    print("  Try these to get started:")
+    print('    "Start my day"            — create a daily note')
+    print('    "Create a new effort"     — set up a project')
+    print('    "I\'ve had an idea about X" — capture a thought')
+    print()
+
+    # Host skill install guidance
+    host_skills_dir = os.path.join(brain_path, ".ai", "host-skills")
+    if os.path.isdir(host_skills_dir):
+        skills = sorted(d for d in os.listdir(host_skills_dir)
+                       if os.path.isdir(os.path.join(host_skills_dir, d)))
+        if skills:
+            print("  ── Host Claude Code skills ──")
+            print()
+            print("  Global skills let Claude Code access your brain from any project.")
+            print(f"  Available: {', '.join(skills)}")
+            print()
+            print("  To install on your host machine, run:")
+            print()
+            print(f"    cp -r {brain_path}/.ai/host-skills/brain-* ~/.claude/skills/")
+            print()
+            print("  Then register the brain MCP server:")
+            print()
+            print("    claude mcp add --scope user brain -- docker exec -i brain brain-mcp-server")
+            print()
+
+    print("-" * 60)
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Auto mode (non-interactive)
+# ---------------------------------------------------------------------------
+
+def run_auto(brain_path):
+    """Non-interactive init: core setup + vault skills + stage global skills."""
+    print("brain-init: auto-initialising vault...")
+    init_core(brain_path)
+    init_vault_skills(brain_path)
+    stage_global_skills(brain_path)
+    print("brain-init: done.")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    brain_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("BRAIN_PATH", "/brain")
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+
+    auto = "--auto" in flags
+    brain_path = args[0] if args else os.environ.get("BRAIN_PATH", "/brain")
+
     if not os.path.isdir(brain_path):
-        print(f"Error: brain path does not exist: {brain_path}", file=sys.stderr)
+        print(f"Error: vault path does not exist: {brain_path}", file=sys.stderr)
         sys.exit(1)
-    init_brain(brain_path)
+
+    if auto or not _is_interactive():
+        run_auto(brain_path)
+    else:
+        run_wizard(brain_path)
