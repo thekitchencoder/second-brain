@@ -117,59 +117,76 @@ def _fetch_models(base_url, timeout=5):
 
 
 def _pick_embedding_model(base_url, default_model):
-    """Interactively pick an embedding model, querying the endpoint if reachable."""
+    """Interactively pick an embedding model, querying the endpoint if reachable.
+
+    Returns (base_url, model) — base_url may be updated if the user re-enters it.
+    """
     print()
     print("  ── Embedding model ──")
     print("  The embedding model affects search quality and index size.")
-    print()
-    print("  Checking endpoint for available models...")
 
-    models = _fetch_models(base_url)
-    # Filter to likely embedding models, but show all if none match
-    embed_keywords = ("embed", "nomic", "minilm", "bge", "gte", "e5")
-    embed_models = [m for m in models if any(k in m.lower() for k in embed_keywords)]
+    while True:
+        print()
+        print(f"  Checking {base_url} for available models...")
 
-    if embed_models:
-        print(f"  Found {len(embed_models)} embedding model(s):")
-        print()
-        for i, m in enumerate(embed_models, 1):
-            marker = " (default)" if m == default_model else ""
-            print(f"    {i}) {m}{marker}")
-        print()
-        pick = _ask_input("  Choose a model (number or name)", default=default_model)
-        # If they entered a number, resolve it
-        try:
-            idx = int(pick) - 1
-            if 0 <= idx < len(embed_models):
-                return embed_models[idx]
-        except ValueError:
-            pass
-        return pick
-    elif models:
-        # Endpoint reachable but no obvious embedding models — show all
-        print(f"  Found {len(models)} model(s) (no obvious embedding models detected):")
-        print()
-        for i, m in enumerate(models, 1):
-            print(f"    {i}) {m}")
-        print()
-        print("  Tip: look for models with 'embed' in the name.")
-        pick = _ask_input("  Embedding model (number or name)", default=default_model)
-        try:
-            idx = int(pick) - 1
-            if 0 <= idx < len(models):
-                return models[idx]
-        except ValueError:
-            pass
-        return pick
-    else:
-        # Endpoint unreachable — fall back to manual entry with guidance
-        print("  Could not reach the endpoint — enter the model name manually.")
-        print("  Common choices:")
-        print("    mxbai-embed-large  — good general-purpose, 1024 dimensions")
-        print("    nomic-embed-text   — better for dense technical content, 768 dims")
-        print("    all-minilm         — lightweight and fast, 384 dims")
-        print()
-        return _ask_input("  Embedding model", default=default_model)
+        models = _fetch_models(base_url)
+        # Filter to likely embedding models, but show all if none match
+        embed_keywords = ("embed", "nomic", "minilm", "bge", "gte", "e5")
+        embed_models = [m for m in models if any(k in m.lower() for k in embed_keywords)]
+
+        if embed_models:
+            print(f"  Found {len(embed_models)} embedding model(s):")
+            print()
+            for i, m in enumerate(embed_models, 1):
+                marker = " (default)" if m == default_model else ""
+                print(f"    {i}) {m}{marker}")
+            print()
+            pick = _ask_input("  Choose a model (number or name)", default=default_model)
+            try:
+                idx = int(pick) - 1
+                if 0 <= idx < len(embed_models):
+                    return base_url, embed_models[idx]
+            except ValueError:
+                pass
+            return base_url, pick
+        elif models:
+            # Endpoint reachable but no obvious embedding models — show all
+            print(f"  Found {len(models)} model(s) (no obvious embedding models detected):")
+            print()
+            for i, m in enumerate(models, 1):
+                print(f"    {i}) {m}")
+            print()
+            print("  Tip: look for models with 'embed' in the name.")
+            pick = _ask_input("  Embedding model (number or name)", default=default_model)
+            try:
+                idx = int(pick) - 1
+                if 0 <= idx < len(models):
+                    return base_url, models[idx]
+            except ValueError:
+                pass
+            return base_url, pick
+        else:
+            # Endpoint unreachable — let the user fix it or skip
+            print(f"  Could not reach {base_url}")
+            print()
+            print("  Check that your model provider is running and the URL is correct.")
+            print("  Common endpoints:")
+            print("    Docker Model Runner: http://model-runner.docker.internal/engines/llama.cpp/v1")
+            print("    Ollama:              http://host.docker.internal:11434/v1")
+            print("    LM Studio:           http://host.docker.internal:1234/v1")
+            print()
+            new_url = _ask_input("  Embedding endpoint (or 'skip' to enter model name manually)", default=base_url)
+            if new_url.lower() == "skip":
+                print()
+                print("  Common embedding models:")
+                print("    mxbai-embed-large  — good general-purpose, 1024 dimensions")
+                print("    nomic-embed-text   — better for dense technical content, 768 dims")
+                print("    all-minilm         — lightweight and fast, 384 dims")
+                print()
+                model = _ask_input("  Embedding model", default=default_model)
+                return base_url, model
+            base_url = new_url
+            # Loop back to retry with the new URL
 
 
 def _count_md_files(path):
@@ -487,7 +504,7 @@ def run_wizard(brain_path):
                 print("  Embedding/chat still need a local model (Docker Model Runner by default).")
 
             # Offer embedding model choice — query the endpoint if reachable
-            config["embedding_model"] = _pick_embedding_model(
+            config["embedding_base_url"], config["embedding_model"] = _pick_embedding_model(
                 config["embedding_base_url"], config["embedding_model"]
             )
 
