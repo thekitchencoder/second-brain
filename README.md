@@ -10,21 +10,27 @@ No repo clone needed — the Docker image has everything.
 # 1. Create a directory for your vault (or use an existing notes folder)
 mkdir -p ~/Documents/brain
 
-# 2. Start the container
+# 2. Run the setup wizard (choose your model provider, create folders, generate .env)
+docker run --rm -it \
+  -v ~/Documents/brain:/brain \
+  kitchencoder/second-brain:latest \
+  brain-init
+
+# 3. Start the container (reads config from vault, runs detached)
 docker run -d --name brain \
   -v ~/Documents/brain:/brain \
   -v brain-claude-data:/home/coder/.claude \
   -v brain-code-server:/home/coder/.local/share/code-server \
   -v brain-zsh-data:/home/coder/.zsh-data \
-  -p 8080:8080 -p 7779:7779 \
+  -p 8080:8080 -p 7779:7779 -p 7780:7780 \
   --restart unless-stopped \
   kitchencoder/second-brain:latest
 
-# 3. Open the browser UI
+# 4. Open the browser UI
 open http://localhost:8080
 ```
 
-The vault is automatically initialised on first start. To customise models, create the folder structure, or install host skills, run the interactive setup wizard:
+Step 2 is optional if you use Docker Model Runner (the defaults work out of the box). The wizard offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run `brain-init` any time:
 
 ```bash
 docker exec -it brain brain-init
@@ -42,7 +48,7 @@ This registers the brain MCP server and installs global skills (brain-context, b
 
 ### Custom configuration
 
-The container works out of the box with Docker Model Runner. For Ollama, LM Studio, or Anthropic API, run `brain-init` inside the container — it offers presets for common setups and writes a `.env` file to your vault. Changes take effect on container restart.
+For Ollama, LM Studio, or Anthropic API, run `brain-init` — it offers presets for common setups and writes a `.env` file to your vault. Changes take effect on container restart.
 
 You can also create or edit the `.env` file manually at `<vault>/.env`. See the [Configuration](#configuration) section for all available variables.
 
@@ -64,7 +70,7 @@ docker compose up -d
 # Pull and restart
 docker pull kitchencoder/second-brain:latest
 docker rm -f brain
-# Re-run the docker run command from Quick Start above
+# Re-run the docker run command from Quick Start step 3 above
 
 # Or with docker compose:
 docker compose pull && docker compose up -d
