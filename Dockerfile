@@ -1,6 +1,6 @@
 FROM codercom/code-server:latest
 
-LABEL version="0.3.0"
+LABEL version="0.4.0"
 
 ARG ZK_VERSION=0.14.1
 ARG SQLITE_VEC_VERSION=0.1.6
