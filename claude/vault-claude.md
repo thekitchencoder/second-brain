@@ -18,4 +18,4 @@ These skills require direct filesystem access and are only available when Claude
 | "Rename this note" | `brain-rename` |
 | "Move X into effort Y" / consolidate notes | `brain-reorganise` |
 
-These extend the global skills (brain-capture, brain-connect, brain-context, brain-create-effort, brain-effort, brain-project, brain-save, brain-surface, brain-triage) which are also available here.
+These extend the global skills (brain-capture, brain-connect, brain-context, brain-create-effort, brain-effort, brain-project, brain-save, brain-setup, brain-surface, brain-triage) which are also available here.

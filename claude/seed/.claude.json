@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "brain": {
-      "command": "brain-mcp-server"
+      "type": "http",
+      "url": "http://127.0.0.1:7780/mcp/"
     },
     "brave-search": {
       "command": "npx",

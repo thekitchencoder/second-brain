@@ -7,8 +7,6 @@ from lib.config import Config
 def test_defaults(monkeypatch):
     monkeypatch.delenv("EMBEDDING_BASE_URL", raising=False)
     monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
-    monkeypatch.delenv("CHAT_BASE_URL", raising=False)
-    monkeypatch.delenv("CHAT_MODEL", raising=False)
     monkeypatch.delenv("BRAIN_PATH", raising=False)
     cfg = Config()
     assert cfg.embedding_base_url == "http://model-runner.docker.internal/engines/llama.cpp/v1"
