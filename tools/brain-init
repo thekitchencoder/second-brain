@@ -46,20 +46,17 @@ _GLOBAL_SKILLS_SOURCE_CANDIDATES = [
     os.path.join(_REPO_ROOT, "skills"),               # local dev (global tier)
 ]
 
-# Skills that belong in the vault (.claude/skills/) — the brain-skills tier
-# TODO: Most of these could be promoted to global (MCP-only) skills.
-# 6 of 10 use filesystem tools only for secondary checks that brain_query
-# can handle. Blockers: brain-extract (needs Edit), brain-rename (has mv path).
-# See PR #4 review for the full audit.
+# Vault skills need direct filesystem access (mv, Glob date patterns, Edit).
+# Global skills are MCP-only — they work from any Claude Code session with the brain plugin.
 _VAULT_SKILL_NAMES = {
-    "brain-capture", "brain-connect", "brain-create-effort", "brain-daily",
-    "brain-effort", "brain-extract", "brain-rename", "brain-reorganise",
-    "brain-surface", "brain-triage",
+    "brain-daily", "brain-extract", "brain-hygiene",
+    "brain-rename", "brain-reorganise",
 }
 
-# Skills that belong on the host (~/.claude/skills/) — the global tier
 _GLOBAL_SKILL_NAMES = {
-    "brain-context", "brain-hygiene", "brain-project", "brain-save",
+    "brain-capture", "brain-connect", "brain-context",
+    "brain-create-effort", "brain-effort", "brain-project",
+    "brain-save", "brain-surface", "brain-triage",
 }
 
 ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
