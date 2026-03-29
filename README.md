@@ -30,7 +30,7 @@ docker run -d --name brain \
 open http://localhost:8080
 ```
 
-Step 2 is optional if you use Docker Model Runner (the defaults work out of the box). The wizard offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run `brain-init` any time:
+The wizard lets you pick your model provider and embedding model. It offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run it any time:
 
 ```bash
 docker exec -it brain brain-init
