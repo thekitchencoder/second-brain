@@ -7,30 +7,25 @@ description: Use when the user wants to work through their discovery inbox, proc
 
 Work through `status: raw` discovery notes one at a time. Promote, archive, or defer each one.
 
-## Path Translation
+## MCP-Only Skill
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
-
-- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
-- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
+This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
 
 ## Flow
 
 ### 1. Find the inbox
 
-```bash
-Grep for `status: raw` in frontmatter across the vault
-```
+**Call `brain_query(status="raw")` NOW.** This returns all notes with `status: raw`.
 
 Report: "You have N raw notes. Working through them oldest first."
 
-Sort oldest first — read frontmatter for each and sort by `captured:` (discovery notes) or `created:` (all other types) ascending.
+Call `brain_read` on each to get `captured:` (discovery notes) or `created:` (all other types) for sorting. Sort oldest first.
 
 ### 2. Process one note at a time
 
 For each note:
 
-1. Read the full note
+1. Read the full note with `brain_read(filepath)`
 2. Summarise it in 1-2 sentences
 3. Ask the user to choose:
 

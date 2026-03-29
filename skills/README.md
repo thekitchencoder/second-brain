@@ -4,8 +4,8 @@ Skills give Claude Code the ability to operate your second-brain without any con
 
 There are two tiers:
 
-- **`skills/`** — global skills, available in any Claude Code session
-- **`brain-skills/`** — vault-level skills, auto-load when Claude Code is opened inside the vault
+- **`skills/`** — global skills (MCP-only), available in any Claude Code session
+- **`brain-skills/`** — vault-level skills (filesystem access), auto-load when Claude Code is opened inside the vault
 
 ## Install
 
@@ -35,27 +35,27 @@ These use MCP tools only — no direct filesystem access needed. Work from any p
 
 | Skill | Trigger | What it does |
 |---|---|---|
+| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks |
+| `brain-connect` | "Find connections for this note" | Surfaces related notes via semantic search + keyword search, offers to patch wikilinks |
 | `brain-context` | Working on a named topic or project | Searches the brain for prior context before starting work |
-| `brain-save` | "remember", "save", "capture", "note down" | Saves something to the brain with correct frontmatter and placement |
+| `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
+| `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort — groups by status, flags orphans |
 | `brain-project` | "start a new project", "set up a project" | Scaffolds a new effort with context primer — two seed documents |
-| `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter completeness, orphaned notes, broken wikilinks, stale drafts |
+| `brain-save` | "remember", "save", "capture", "note down" | Saves something to the brain with correct frontmatter and placement |
+| `brain-surface` | "What's simmering?", "surface parked work" | Surfaces `intensity: simmering` efforts oldest-first, shows saved next steps |
+| `brain-triage` | "Process my inbox", "triage" | Works through `status: raw` notes one at a time — promote, archive, or defer |
 
 ## Vault-level skills (`brain-skills/`)
 
-These load only when Claude Code is opened at the vault root. They use both MCP tools and direct filesystem tools (Glob, Grep, Read).
+These load only when Claude Code is opened at the vault root. They need direct filesystem access (Glob, Grep, Read, Edit, `mv`).
 
 | Skill | Trigger | What it does |
 |---|---|---|
-| `brain-capture` | "I've had an idea about X" | Conversational capture → creates note → waits for edit → wires in wikilinks |
-| `brain-connect` | "Find connections for this note" | Surfaces related notes via semantic search + grep, offers to patch wikilinks |
-| `brain-triage` | "Process my inbox", "triage" | Works through `status: raw` notes one at a time — promote, archive, or defer |
-| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
 | `brain-daily` | "Start my day", "daily note" | Creates today's daily note, carries forward open items, shows inbox count |
-| `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort — groups by status, flags orphans |
 | `brain-extract` | "Pull ideas out of this note" | Extracts atomic ideas from a long note into separate Cards with wikilinks back |
-| `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
+| `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter, orphaned notes, broken wikilinks (with repair), stale drafts, trash |
+| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
 | `brain-reorganise` | "Move X into effort Y", "consolidate" | Moves notes into an effort via `brain-rename` to preserve all wikilinks |
-| `brain-surface` | "What's simmering?", "surface parked work" | Surfaces `intensity: simmering` efforts oldest-first, shows saved next steps |
 
 ## Requirements
 

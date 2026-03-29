@@ -7,12 +7,9 @@ description: Use when the user asks to find connections, related notes, or links
 
 Find semantic and structural connections for a note. Report findings, offer to patch wikilinks.
 
-## Path Translation
+## MCP-Only Skill
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
-
-- **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
-- **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
+This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
 
 ## Flow
 
@@ -21,16 +18,16 @@ Find semantic and structural connections for a note. Report findings, offer to p
 Accept any of:
 
 - Relative path: `Cards/foo.md`
-- MCP path: `/brain/Cards/foo.md` → strip `/brain` prefix
+- MCP path: `/brain/Cards/foo.md`
 - Title or description: run `brain_search(title)` to find it
 
-Read the resolved note with the `Read` tool.
+Read the resolved note with `brain_read(filepath)`.
 
 ### 2. Search (run all three in parallel)
 
 - `brain_related(filepath)` — semantic similarity via embeddings
 - `brain_backlinks(filepath)` — notes that already wikilink TO this note (structural context)
-- `Grep` for key terms from the note's title and tags — catches structural links the embedding may miss (project slug, effort name, tag values, key noun phrases)
+- `brain_search(query="<key terms>")` — run multiple targeted searches using the note's title, tags, and key noun phrases to catch structural matches that embeddings may miss
 
 Deduplicate. Exclude notes already wikilinked in the note body.
 
@@ -64,5 +61,5 @@ If yes, for each candidate:
 | Mistake | Fix |
 |---|---|
 | Including notes already linked in the body | Check existing wikilinks before reporting candidates |
-| Only running semantic search | Always Grep for keywords too — embeddings miss exact matches |
+| Only running semantic search | Always run additional `brain_search` queries for specific keywords from the note's title and tags |
 | Adding wikilinks without asking | Always report first, then offer to patch |
