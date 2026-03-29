@@ -75,7 +75,7 @@ Tools: `brain_search`, `brain_query`, `brain_read`, `brain_write`, `brain_create
 ### Skills System
 
 Two tiers of Claude Code skills:
-- **`skills/`** — Global skills (9): MCP-only, work from any host session via `claude plugin add`. Includes brain-capture, brain-connect, brain-context, brain-create-effort, brain-effort, brain-project, brain-save, brain-surface, brain-triage.
+- **`skills/`** — Global skills (10): MCP-only, work from any host session via `claude plugin add`. Includes brain-capture, brain-connect, brain-context, brain-create-effort, brain-effort, brain-project, brain-save, brain-setup, brain-surface, brain-triage.
 - **`brain-skills/`** — Vault-level skills (5): need direct filesystem access (mv, Glob, Edit). Includes brain-daily, brain-extract, brain-hygiene, brain-rename, brain-reorganise.
 
 Both tiers are baked into the Docker image and seeded into `~/.claude/skills/` inside the container by `entrypoint.sh`. Global skills use MCP tools only; vault skills also use filesystem tools for structural operations. When editing skills, check both directories.
