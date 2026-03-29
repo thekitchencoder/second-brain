@@ -75,7 +75,7 @@ Tools: `brain_search`, `brain_query`, `brain_read`, `brain_write`, `brain_create
 ### Skills System
 
 Two tiers of Claude Code skills:
-- **`skills/`** — Global skills for host Claude Code (staged to `<vault>/.ai/host-skills/` by `brain-init`, user copies to `~/.claude/skills/`)
+- **`skills/`** — Global skills for host Claude Code (staged as a plugin to `<vault>/.ai/brain-plugin/` by `brain-init`, user installs via `claude plugin add`)
 - **`brain-skills/`** — Vault-level skills (auto-installed to `<vault>/.claude/skills/` by `brain-init`)
 
 Both tiers are baked into the Docker image and seeded into `~/.claude/skills/` inside the container by `entrypoint.sh`. Skills use MCP tools for semantic operations + direct filesystem access for file I/O. When editing skills, check both directories.
