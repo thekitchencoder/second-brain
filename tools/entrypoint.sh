@@ -13,6 +13,13 @@ if [ -f /brain/.env ]; then
     set +a
 fi
 
+# If the user explicitly invoked brain-init, run it directly (interactive wizard).
+# Skip the rest of the entrypoint so code-server doesn't start on top.
+if [ "$1" = "brain-init" ]; then
+    shift
+    exec brain-init "$@"
+fi
+
 CLAUDE_DIR=/home/coder/.claude
 SEED_DIR=/usr/local/lib/brain-tools/claude-seed
 mkdir -p "$CLAUDE_DIR"

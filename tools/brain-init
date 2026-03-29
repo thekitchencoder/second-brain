@@ -60,7 +60,7 @@ _VAULT_SKILL_NAMES = {
 _GLOBAL_SKILL_NAMES = {
     "brain-capture", "brain-connect", "brain-context",
     "brain-create-effort", "brain-effort", "brain-project",
-    "brain-save", "brain-surface", "brain-triage",
+    "brain-save", "brain-setup", "brain-surface", "brain-triage",
 }
 
 ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
@@ -84,7 +84,7 @@ def _ask(prompt, default="y"):
     suffix = " [Y/n] " if default == "y" else " [y/N] "
     try:
         answer = input(prompt + suffix).strip().lower()
-    except (EOFError, KeyboardInterrupt):
+    except EOFError:
         print()
         return default == "y"
     if not answer:
@@ -97,14 +97,14 @@ def _ask_input(prompt, default=""):
     display = f" [{default}]" if default else ""
     try:
         answer = input(f"{prompt}{display}: ").strip()
-    except (EOFError, KeyboardInterrupt):
+    except EOFError:
         print()
         return default
     return answer or default
 
 
-def _fetch_models(base_url, timeout=5):
-    """Query an OpenAI-compatible /models endpoint. Returns list of model IDs or []."""
+def _fetch_models(base_url, timeout=5, auth_token=""):
+    """Query an OpenAI-compatible /models endpoint. Returns (models, error_hint)."""
     # Normalise: strip trailing /v1 if present, then append /v1/models
     url = base_url.rstrip("/")
     if url.endswith("/v1"):
@@ -112,13 +112,20 @@ def _fetch_models(base_url, timeout=5):
     else:
         url = url + "/v1/models"
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        headers = {"Accept": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
             models = data.get("data", [])
-            return sorted(m.get("id", "") for m in models if m.get("id"))
-    except Exception:
-        return []
+            return sorted(m.get("id", "") for m in models if m.get("id")), None
+    except urllib.error.HTTPError as e:
+        return [], f"HTTP {e.code} {e.reason} — {url}"
+    except urllib.error.URLError as e:
+        return [], f"Connection failed: {e.reason} — {url}"
+    except Exception as e:
+        return [], f"{type(e).__name__}: {e} — {url}"
 
 
 def _pick_embedding_model(base_url, default_model):
@@ -134,19 +141,20 @@ def _pick_embedding_model(base_url, default_model):
         print()
         print(f"  Checking {base_url} for available models...")
 
-        models = _fetch_models(base_url)
+        models, error = _fetch_models(base_url)
         # Filter to likely embedding models, but show all if none match
         embed_keywords = ("embed", "nomic", "minilm", "bge", "gte", "e5")
         embed_models = [m for m in models if any(k in m.lower() for k in embed_keywords)]
 
         if embed_models:
+            effective_default = default_model if default_model in embed_models else embed_models[0]
             print(f"  Found {len(embed_models)} embedding model(s):")
             print()
             for i, m in enumerate(embed_models, 1):
-                marker = " (default)" if m == default_model else ""
+                marker = " (default)" if m == effective_default else ""
                 print(f"    {i}) {m}{marker}")
             print()
-            pick = _ask_input("  Choose a model (number or name)", default=default_model)
+            pick = _ask_input("  Choose a model (number or name)", default=effective_default)
             try:
                 idx = int(pick) - 1
                 if 0 <= idx < len(embed_models):
@@ -156,13 +164,15 @@ def _pick_embedding_model(base_url, default_model):
             return base_url, pick
         elif models:
             # Endpoint reachable but no obvious embedding models — show all
+            effective_default = default_model if default_model in models else models[0]
             print(f"  Found {len(models)} model(s) (no obvious embedding models detected):")
             print()
             for i, m in enumerate(models, 1):
-                print(f"    {i}) {m}")
+                marker = " (default)" if m == effective_default else ""
+                print(f"    {i}) {m}{marker}")
             print()
             print("  Tip: look for models with 'embed' in the name.")
-            pick = _ask_input("  Embedding model (number or name)", default=default_model)
+            pick = _ask_input("  Embedding model (number or name)", default=effective_default)
             try:
                 idx = int(pick) - 1
                 if 0 <= idx < len(models):
@@ -172,7 +182,7 @@ def _pick_embedding_model(base_url, default_model):
             return base_url, pick
         else:
             # Endpoint unreachable — let the user fix it or skip
-            print(f"  Could not reach {base_url}")
+            print(f"  Could not reach {base_url}" + (f": {error}" if error else ""))
             print()
             print("  Check that your model provider is running and the URL is correct.")
             print("  Common endpoints:")
@@ -192,6 +202,99 @@ def _pick_embedding_model(base_url, default_model):
                 return base_url, model
             base_url = new_url
             # Loop back to retry with the new URL
+
+
+def _pick_model(base_url, default_model, label="model", auth_token=""):
+    """Query an OpenAI-compatible endpoint and let the user pick a model.
+
+    Returns (base_url, model) — base_url may be updated if the user re-enters it.
+    """
+    while True:
+        print()
+        print(f"  Checking {base_url} for available models...")
+        models, error = _fetch_models(base_url, auth_token=auth_token)
+
+        if models:
+            effective_default = default_model if default_model in models else models[0]
+            print(f"  Found {len(models)} model(s):")
+            print()
+            for i, m in enumerate(models, 1):
+                marker = " (default)" if m == effective_default else ""
+                print(f"    {i}) {m}{marker}")
+            print()
+            pick = _ask_input(f"  Choose a {label} (number or name)", default=effective_default)
+            try:
+                idx = int(pick) - 1
+                if 0 <= idx < len(models):
+                    return base_url, models[idx]
+            except ValueError:
+                pass
+            return base_url, pick
+        else:
+            if error and "404" in error:
+                print(f"  {base_url} does not expose a model listing.")
+            else:
+                print(f"  Could not reach {base_url}" + (f": {error}" if error else ""))
+            print()
+            new_url = _ask_input(f"  Endpoint (or 'skip' to enter model name manually)", default=base_url)
+            if new_url.lower() == "skip":
+                model = _ask_input(f"  {label.capitalize()} model name", default=default_model)
+                return base_url, model
+            base_url = new_url
+
+
+def _configure_claude_code_llm(config):
+    """Interactively configure Claude Code's in-container LLM (Anthropic-compatible endpoint)."""
+    print()
+    print("  ── Claude Code LLM ──")
+    print("  Configure which model Claude Code uses inside the container.")
+    print("  Leave blank to use the Anthropic API directly (requires ANTHROPIC_API_KEY).")
+    print()
+
+    default_url = config.get("anthropic_base_url", "")
+    default_model = config.get("anthropic_model", "")
+    default_token = config.get("anthropic_auth_token", "")
+
+    base_url = _ask_input("  LLM endpoint (blank for Anthropic API)", default=default_url)
+
+    if base_url:
+        auth_token = _ask_input("  Auth token (blank if none)", default=default_token)
+        base_url, model = _pick_model(base_url, default_model, label="LLM model", auth_token=auth_token)
+        config["anthropic_base_url"] = base_url
+        config["anthropic_model"] = model
+        config["anthropic_auth_token"] = auth_token
+    else:
+        config["anthropic_base_url"] = ""
+        config["anthropic_model"] = ""
+        config["anthropic_auth_token"] = ""
+
+
+def _configure_brave(config):
+    """Optionally configure a Brave Search API key."""
+    print()
+    print("  ── Brave Search (optional) ──")
+    print("  Enables web search inside Claude Code sessions.")
+    print("  Get a free key at https://brave.com/search/api/")
+    print()
+    default_key = config.get("brave_api_key", "")
+    key = _ask_input("  Brave API key (blank to skip)", default=default_key)
+    config["brave_api_key"] = key
+
+
+def _read_env_value(env_path, key):
+    """Read a single variable's value from a .env file. Returns '' if not found."""
+    if not os.path.isfile(env_path):
+        return ""
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith(f"{key}="):
+                value = line[len(key) + 1:]
+                # Strip inline comments (space + #)
+                if "  #" in value:
+                    value = value[:value.index("  #")].strip()
+                return value
+    return ""
 
 
 def _count_md_files(path):
@@ -292,15 +395,19 @@ def init_vault_skills(brain_path):
 def stage_brain_plugin(brain_path):
     """Stage a Claude Code plugin at <vault>/.ai/brain-plugin/ for host installation.
 
-    The plugin bundles global skills and an MCP server config so the user
-    can install everything on the host with a single command:
-        claude plugin add <vault>/.ai/brain-plugin
+    The marketplace manifest lives one level up at <vault>/.ai/.claude-plugin/marketplace.json
+    so the source path "./brain-plugin" is a valid relative reference.
+
+    Install with:
+        claude plugin marketplace add <vault>/.ai
+        claude plugin install second-brain
     """
     skills_source = _find_source(_GLOBAL_SKILLS_SOURCE_CANDIDATES)
     if skills_source is None:
         return
 
-    plugin_dir = os.path.join(brain_path, ".ai", "brain-plugin")
+    ai_dir = os.path.join(brain_path, ".ai")
+    plugin_dir = os.path.join(ai_dir, "brain-plugin")
     manifest_dir = os.path.join(plugin_dir, ".claude-plugin")
     skills_dir = os.path.join(plugin_dir, "skills")
 
@@ -312,10 +419,32 @@ def stage_brain_plugin(brain_path):
         "name": "second-brain",
         "version": "1.0.0",
         "description": "Global brain skills and MCP server for second-brain",
+        "author": {"name": "kitchencoder"},
     }
     manifest_path = os.path.join(manifest_dir, "plugin.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
+        f.write("\n")
+
+    # Write marketplace manifest at .ai/.claude-plugin/marketplace.json
+    # so "./brain-plugin" is a valid relative path to the plugin directory.
+    marketplace = {
+        "name": "second-brain",
+        "owner": {"name": "kitchencoder"},
+        "plugins": [
+            {
+                "name": "second-brain",
+                "source": "./brain-plugin",
+                "description": "Global brain skills and MCP server for second-brain",
+                "author": {"name": "kitchencoder"},
+            }
+        ],
+    }
+    marketplace_manifest_dir = os.path.join(ai_dir, ".claude-plugin")
+    os.makedirs(marketplace_manifest_dir, exist_ok=True)
+    marketplace_path = os.path.join(marketplace_manifest_dir, "marketplace.json")
+    with open(marketplace_path, "w") as f:
+        json.dump(marketplace, f, indent=2)
         f.write("\n")
 
     # Write MCP server config (HTTP transport)
@@ -323,7 +452,7 @@ def stage_brain_plugin(brain_path):
         "mcpServers": {
             "brain": {
                 "type": "http",
-                "url": "http://localhost:7780/mcp",
+                "url": "http://127.0.0.1:7780/mcp/",
             }
         }
     }
@@ -387,10 +516,6 @@ def generate_env(brain_path, config):
         f"EMBEDDING_MODEL={config['embedding_model']}",
         f"OPENAI_API_KEY={config.get('openai_api_key', 'local')}",
         "",
-        "# ── Chat model (for brain REST API) ──────────────────────────────────────────",
-        f"CHAT_BASE_URL={config['chat_base_url']}",
-        f"CHAT_MODEL={config['chat_model']}",
-        "",
         "# ── Claude Code (in-container LLM) ───────────────────────────────────────────",
     ]
     if config.get("anthropic_base_url"):
@@ -403,11 +528,22 @@ def generate_env(brain_path, config):
         lines.append("# Using Anthropic API directly (set ANTHROPIC_API_KEY in your environment)")
 
     lines.append("")
+    lines.append("# ── Container ─────────────────────────────────────────────────────────────────")
+    lines.append("# Host path on your machine mounted as /brain in the container")
+    if config.get("host_path"):
+        lines.append(f"BRAIN_HOST_PATH={config['host_path']}")
+    else:
+        lines.append("# BRAIN_HOST_PATH=~/Documents/brain")
+    lines.append("")
     lines.append("# ── MCP transport ─────────────────────────────────────────────────────────────")
-    lines.append("BRAIN_MCP_TRANSPORT=http   # Enable HTTP MCP transport on port 7780")
+    lines.append("# Enable HTTP MCP transport on port 7780")
+    lines.append("BRAIN_MCP_TRANSPORT=http")
     lines.append("")
     lines.append("# ── Optional ──────────────────────────────────────────────────────────────────")
-    lines.append("# BRAVE_API_KEY=          # Web search in Claude Code (https://brave.com/search/api/)")
+    if config.get("brave_api_key"):
+        lines.append(f"BRAVE_API_KEY={config['brave_api_key']}")
+    else:
+        lines.append("# BRAVE_API_KEY=")
     lines.append("")
 
     with open(env_path, "w") as f:
@@ -424,29 +560,23 @@ PRESETS = {
         "name": "Docker Model Runner (default)",
         "embedding_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
         "embedding_model": "ai/mxbai-embed-large:latest",
-        "chat_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
-        "chat_model": "ai/llama3.2:latest",
         "anthropic_base_url": "http://model-runner.docker.internal",
         "anthropic_auth_token": "ollama",
-        "anthropic_model": "minimax-2.5:latest",
+        "anthropic_model": "docker.io/ai/qwen2.5:7B-Q4_0",
     },
     "2": {
         "name": "Ollama",
-        "embedding_base_url": "http://host.docker.internal:11434/v1",
+        "embedding_base_url": "http://localhost:11434/v1",
         "embedding_model": "mxbai-embed-large",
-        "chat_base_url": "http://host.docker.internal:11434/v1",
-        "chat_model": "llama3.2",
-        "anthropic_base_url": "http://host.docker.internal:11434",
+        "anthropic_base_url": "http://localhost:11434",
         "anthropic_auth_token": "ollama",
         "anthropic_model": "llama3.2",
     },
     "3": {
         "name": "LM Studio",
-        "embedding_base_url": "http://host.docker.internal:1234/v1",
+        "embedding_base_url": "http://localhost:1234/v1",
         "embedding_model": "mxbai-embed-large",
-        "chat_base_url": "http://host.docker.internal:1234/v1",
-        "chat_model": "llama3.2",
-        "anthropic_base_url": "http://host.docker.internal:1234",
+        "anthropic_base_url": "http://localhost:1234",
         "anthropic_auth_token": "lm-studio",
         "anthropic_model": "",
     },
@@ -454,8 +584,6 @@ PRESETS = {
         "name": "Anthropic API (real Claude)",
         "embedding_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
         "embedding_model": "ai/mxbai-embed-large:latest",
-        "chat_base_url": "http://model-runner.docker.internal/engines/llama.cpp/v1",
-        "chat_model": "ai/llama3.2:latest",
         "anthropic_base_url": "",
         "anthropic_auth_token": "",
         "anthropic_model": "",
@@ -513,48 +641,20 @@ def run_wizard(brain_path):
     # Step 3: Environment configuration
     print("[3/5] Environment configuration")
     env_path = os.path.join(brain_path, ".env")
+    existing_host_path = _read_env_value(env_path, "BRAIN_HOST_PATH")
     if os.path.isfile(env_path):
         print(f"  .env already exists. ", end="")
         if _ask("Regenerate?", default="n"):
-            config = _prompt_env_config()
+            config = _prompt_env_config_wizard(default_host_path=existing_host_path)
             generate_env(brain_path, config)
+            host_path = config.get("host_path", "")
         else:
             print("  Keeping existing .env")
+            host_path = existing_host_path
     else:
-        print("  The container needs to know which models to use for embeddings and chat.")
-        print()
-        print("  Presets:")
-        for key, preset in PRESETS.items():
-            print(f"    {key}) {preset['name']}")
-        print(f"    5) Custom (enter endpoints manually)")
-        print()
-
-        choice = _ask_input("  Choose a preset", default="1")
-
-        if choice in PRESETS:
-            config = dict(PRESETS[choice])
-            name = config.pop("name")
-            print(f"  Using {name} defaults.")
-
-            # For Anthropic API preset, prompt for customisation
-            if choice == "4":
-                print("  Note: You'll need to set ANTHROPIC_API_KEY in the container environment.")
-                print("  Embedding/chat still need a local model (Docker Model Runner by default).")
-
-            # Offer embedding model choice — query the endpoint if reachable
-            config["embedding_base_url"], config["embedding_model"] = _pick_embedding_model(
-                config["embedding_base_url"], config["embedding_model"]
-            )
-
-            generate_env(brain_path, config)
-        elif choice == "5":
-            config = _prompt_env_config()
-            generate_env(brain_path, config)
-        else:
-            print(f"  Unknown choice '{choice}', using Docker Model Runner defaults.")
-            config = dict(PRESETS["1"])
-            config.pop("name")
-            generate_env(brain_path, config)
+        config = _prompt_env_config_wizard()
+        generate_env(brain_path, config)
+        host_path = config.get("host_path", "")
     print()
 
     # Step 4: Index
@@ -570,22 +670,64 @@ def run_wizard(brain_path):
 
     # Step 5: Done
     print("[5/5] Setup complete!")
-    _print_welcome(brain_path)
+    _print_welcome(brain_path, host_path=host_path)
+
+
+def _ask_host_path(default=""):
+    """Ask for the host filesystem path that is mounted as /brain."""
+    print()
+    print("  ── Host vault path ──")
+    print("  This is the path on your host machine that you mount as /brain.")
+    print("  It's saved to .env so skills can generate correct docker run commands.")
+    print()
+    return _ask_input("  Host path to this vault (e.g. ~/Documents/brain)", default=default)
+
+
+def _prompt_env_config_wizard(default_host_path=""):
+    """Preset picker + model discovery — used for both new and regenerated .env."""
+    print("  The container needs to know which models to use for embeddings and chat.")
+    print()
+    print("  Presets:")
+    for key, preset in PRESETS.items():
+        print(f"    {key}) {preset['name']}")
+    print(f"    5) Custom (enter endpoints manually)")
+    print()
+
+    choice = _ask_input("  Choose a preset", default="1")
+
+    if choice in PRESETS:
+        config = dict(PRESETS[choice])
+        name = config.pop("name")
+        print(f"  Using {name} defaults.")
+        if choice == "4":
+            print("  Note: You'll need to set ANTHROPIC_API_KEY in the container environment.")
+            print("  Embedding/chat still need a local model (Docker Model Runner by default).")
+        config["embedding_base_url"], config["embedding_model"] = _pick_embedding_model(
+            config["embedding_base_url"], config["embedding_model"]
+        )
+    elif choice == "5":
+        config = _prompt_env_config()
+    else:
+        print(f"  Unknown choice '{choice}', using Docker Model Runner defaults.")
+        config = dict(PRESETS["1"])
+        config.pop("name")
+        config["embedding_base_url"], config["embedding_model"] = _pick_embedding_model(
+            config["embedding_base_url"], config["embedding_model"]
+        )
+
+    _configure_claude_code_llm(config)
+    _configure_brave(config)
+    config["host_path"] = _ask_host_path(default_host_path)
+    return config
 
 
 def _prompt_env_config():
-    """Prompt for each endpoint individually."""
+    """Prompt for each embedding/chat endpoint individually (custom preset path)."""
     dmr = "http://model-runner.docker.internal/engines/llama.cpp/v1"
     config = {
         "embedding_base_url": _ask_input("  Embedding endpoint", default=dmr),
         "embedding_model": _ask_input("  Embedding model", default="ai/mxbai-embed-large:latest"),
-        "chat_base_url": _ask_input("  Chat endpoint", default=dmr),
-        "chat_model": _ask_input("  Chat model", default="ai/llama3.2:latest"),
         "openai_api_key": "local",
-        "anthropic_base_url": _ask_input("  Claude Code LLM endpoint (blank for Anthropic API)",
-                                          default="http://model-runner.docker.internal"),
-        "anthropic_auth_token": _ask_input("  Claude Code auth token", default="ollama"),
-        "anthropic_model": _ask_input("  Claude Code model", default="minimax-2.5:latest"),
     }
     return config
 
@@ -614,15 +756,28 @@ def _run_index(brain_path):
         print("  Indexing timed out (>5 min). The background watcher will continue.")
 
 
-def _print_welcome(brain_path):
+def _print_welcome(brain_path, host_path=""):
     """Print next steps and host skill install instructions."""
+    # Use host_path for commands shown to the user; fall back to brain_path if unknown
+    display_path = host_path or brain_path
+
     print()
     print("-" * 60)
+    print()
+    print("  ── Start the container ──")
+    print()
+    print(f"    docker run -d --name second-brain --restart unless-stopped \\")
+    print(f"      -v {display_path}:/brain \\")
+    print(f"      -p 8080:8080 -p 7780:7780 \\")
+    print(f"      kitchencoder/second-brain:latest")
+    print()
+    print("  Once running:")
     print()
     print("  Open http://localhost:8080 for VS Code in the browser.")
     print("  Run 'claude' in the terminal to start a Claude Code session.")
     print()
     print("  Try these to get started:")
+    print('    "Set up my brain"         — guided first-time vault setup')
     print('    "Start my day"            — create a daily note')
     print('    "Create a new effort"     — set up a project')
     print('    "I\'ve had an idea about X" — capture a thought')
@@ -640,9 +795,10 @@ def _print_welcome(brain_path):
             print("  A plugin has been staged with global skills and MCP config.")
             print(f"  Skills: {', '.join(skills)}")
             print()
-            print("  To install on your host machine, run one command:")
+            print("  To install on your host machine, run these two commands:")
             print()
-            print(f"    claude plugin add {brain_path}/.ai/brain-plugin")
+            print(f"    claude plugin marketplace add {display_path}/.ai")
+            print(f"    claude plugin install second-brain")
             print()
             print("  This registers the brain MCP server and installs all global")
             print("  skills so Claude Code can access your brain from any project.")
@@ -680,7 +836,11 @@ if __name__ == "__main__":
         print(f"Error: vault path does not exist: {brain_path}", file=sys.stderr)
         sys.exit(1)
 
-    if auto or not _is_interactive():
-        run_auto(brain_path)
-    else:
-        run_wizard(brain_path)
+    try:
+        if auto or not _is_interactive():
+            run_auto(brain_path)
+        else:
+            run_wizard(brain_path)
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        sys.exit(1)

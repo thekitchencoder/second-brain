@@ -30,6 +30,7 @@ Skills are pre-loaded and encode correct conventions. Use them instead of manual
 
 | Say this | Skill invoked |
 |---|---|
+| "Set up my brain" / first-time vault setup | `brain-setup` |
 | "I've had an idea" / capture something | `brain-capture` |
 | "Find connections for this note" | `brain-connect` |
 | Working on a named topic or project | `brain-context` |
