@@ -4,45 +4,79 @@ Docker container for brain management: zk, semantic search, and MCP server for C
 
 ## Quick start
 
+No repo clone needed — the Docker image has everything.
+
 ```bash
-# Set your vault path in the shell — required before docker compose up
-export BRAIN_HOST_PATH=~/Documents/brain   # edit to match your vault location
-# Add this to ~/.zshrc or ~/.bashrc to persist across sessions
+# 1. Create a directory for your vault (or use an existing notes folder)
+mkdir -p ~/Documents/brain
 
-# Copy and configure container environment
-cp .env.example .env
-# Edit .env for EMBEDDING_MODEL, CHAT_MODEL, etc. if needed
+# 2. Run the setup wizard (choose your model provider, create folders, generate .env)
+docker run --rm -it \
+  -v ~/Documents/brain:/brain \
+  kitchencoder/second-brain:latest \
+  brain-init
 
-# Start (pulls image from Docker Hub)
-docker compose up -d
+# 3. Start the container (reads config from vault, runs detached)
+docker run -d --name brain \
+  -v ~/Documents/brain:/brain \
+  -v brain-claude-data:/home/coder/.claude \
+  -v brain-code-server:/home/coder/.local/share/code-server \
+  -v brain-zsh-data:/home/coder/.zsh-data \
+  -p 8080:8080 -p 7779:7779 -p 7780:7780 \
+  --restart unless-stopped \
+  kitchencoder/second-brain:latest
 
-# Browser UI — VS Code with brain tools and Claude Code
+# 4. Open the browser UI
 open http://localhost:8080
-
-# Or shell into the container directly
-docker exec -it brain zsh
-
-# Initialise a brain (first time only)
-brain-init
-
-# First-time vault structure setup — paste prompts/setup.md into a Claude session
-
-# Index for semantic search
-brain-index run
 ```
+
+The wizard lets you pick your model provider and embedding model. It offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run it any time:
+
+```bash
+docker exec -it brain brain-init
+```
+
+### Connect to host Claude Code
+
+`brain-init` stages a Claude Code plugin inside the vault with global skills and MCP server config. Install it on your host with one command:
+
+```bash
+claude plugin add ~/Documents/brain/.ai/brain-plugin
+```
+
+This registers the brain MCP server and installs global skills (brain-context, brain-save, brain-project, brain-hygiene) so Claude Code can access your brain from any project.
+
+### Custom configuration
+
+For Ollama, LM Studio, or Anthropic API, run `brain-init` — it offers presets for common setups and writes a `.env` file to your vault. Changes take effect on container restart.
+
+You can also create or edit the `.env` file manually at `<vault>/.env`. See the [Configuration](#configuration) section for all available variables.
+
+### Using docker compose
+
+If you prefer docker compose (e.g. for development), clone this repo and use:
+
+```bash
+export BRAIN_HOST_PATH=~/Documents/brain
+cp .env.example .env    # edit as needed
+docker compose up -d
+```
+
+`BRAIN_HOST_PATH` must be exported in your shell — it is not reliably read from `.env` across all platforms.
 
 ## Upgrading
 
 ```bash
-# 1. Pull the new container image
+# Pull and restart
+docker pull kitchencoder/second-brain:latest
+docker rm -f brain
+# Re-run the docker run command from Quick Start step 3 above
+
+# Or with docker compose:
 docker compose pull && docker compose up -d
-
-# 2. Update templates in your vault
-cp /path/to/second-brain/zk/templates/*.md $BRAIN_HOST_PATH/.zk/templates/
-
-# 3. Update skills (if copied, not symlinked — see Skills section below)
-cp -r skills/brain-* ~/.claude/skills/
 ```
+
+Your vault data, Claude config, and shell history are preserved in named volumes. To update templates and skills inside an existing vault, run `brain-init` again — it will update staged host skills and leave existing config untouched.
 
 No re-indexing required unless the release notes say otherwise.
 
@@ -433,36 +467,14 @@ The HTTP endpoint is `http://<host>:<port>/mcp` and implements the MCP Streamabl
 
 ## Skills
 
-There are two sets of skills:
+There are two tiers of skills:
 
-- **`skills/`** — installed into `~/.claude/skills/` (or Claude Desktop). These use the MCP server and work from any project directory.
-- **`brain-skills/`** — installed into `$BRAIN_HOST_PATH/.claude/skills/`. These load only when Claude Code is opened at the vault root. They use MCP for semantic search and direct filesystem tools for file I/O.
+- **Vault-level** (`brain-skills/`) — auto-installed by `brain-init` into `<vault>/.claude/skills/`. Load when Claude Code is opened at the vault root. Use MCP for semantic search and direct filesystem tools for file I/O.
+- **Global** (`skills/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only.
 
-### Claude Code — global skills (`skills/`)
+### Vault-level skills (auto-installed)
 
-Copy (one-off):
-```bash
-cp -r skills/brain-* ~/.claude/skills/
-```
-
-Or symlink so skills stay in sync with the repo:
-```bash
-for d in skills/brain-*/; do ln -sf "$PWD/$d" ~/.claude/skills/; done
-```
-
-### Claude Code — vault-level skills (`brain-skills/`)
-
-These load automatically when Claude Code is opened inside the vault.
-
-Copy (one-off):
-```bash
-cp -r brain-skills/brain-* $BRAIN_HOST_PATH/.claude/skills/
-```
-
-Or symlink:
-```bash
-for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/skills/"; done
-```
+These are installed automatically when the container starts or when you run `brain-init`. No manual setup needed.
 
 | Skill | Trigger | What it does |
 |---|---|---|
@@ -476,6 +488,23 @@ for d in brain-skills/brain-*/; do ln -sf "$PWD/$d" "$BRAIN_HOST_PATH/.claude/sk
 | `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
 | `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
 | `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
+
+### Global skills (host install via plugin)
+
+Global skills let Claude Code access your brain from any project on your host machine (e.g. while coding, save context back to the brain). `brain-init` stages them as a Claude Code plugin:
+
+```bash
+claude plugin add ~/Documents/brain/.ai/brain-plugin
+```
+
+This also registers the brain MCP server — no separate `claude mcp add` needed.
+
+| Skill | Trigger | What it does |
+|---|---|---|
+| `brain-context` | Working on a named topic or project | Searches the brain for prior context before starting work |
+| `brain-save` | "remember", "save", "capture" | Saves something to the brain with correct frontmatter and placement |
+| `brain-project` | "start a new project" | Scaffolds a new effort with context primer |
+| `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter, orphaned notes, broken wikilinks, stale drafts |
 
 ### Claude Desktop / claude.ai
 
@@ -509,6 +538,20 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token — use `ollama` for Docker Model Runner |
 | `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `minimax-2.5:latest` |
 | `BRAVE_API_KEY` | — | Optional — enables web search in Claude Code via Brave Search MCP |
+
+### Choosing an embedding model
+
+The embedding model affects semantic search quality, indexing speed, and database size. `brain-init` defaults to `mxbai-embed-large` but you can choose a different model during setup or by editing `EMBEDDING_MODEL` in your vault's `.env`.
+
+| Model | Dimensions | Best for | Trade-offs |
+|---|---|---|---|
+| `mxbai-embed-large` | 1024 | General-purpose notes, mixed content | Good balance of quality and speed |
+| `nomic-embed-text` | 768 | Token-dense technical content (code, specs, architecture docs) | Higher quality on technical text, larger index |
+| `all-minilm` | 384 | Large vaults where speed matters | Fastest and smallest index, lower retrieval quality |
+
+**Changing models requires re-indexing** — the embedding dimensions are stored in `embeddings.db`. After changing `EMBEDDING_MODEL`, delete `.ai/embeddings.db` and run `brain-index run` (or restart the container and let the background watcher rebuild it).
+
+For Docker Model Runner, prefix model names with `ai/` (e.g. `ai/mxbai-embed-large:latest`). For Ollama and LM Studio, use the bare name (e.g. `mxbai-embed-large`).
 
 ### Using Ollama instead of Docker Model Runner
 
