@@ -214,7 +214,23 @@ def init_core(brain_path):
     ai_dest = os.path.join(brain_path, ".ai")
 
     if os.path.isdir(zk_dest):
-        print(f"  .zk/ already exists, skipping.")
+        # Sync new templates into existing .zk/templates/ without overwriting user edits
+        src_templates = os.path.join(zk_source, "templates")
+        dst_templates = os.path.join(zk_dest, "templates")
+        if os.path.isdir(src_templates) and os.path.isdir(dst_templates):
+            new_templates = []
+            for name in os.listdir(src_templates):
+                src_file = os.path.join(src_templates, name)
+                dst_file = os.path.join(dst_templates, name)
+                if os.path.isfile(src_file) and not os.path.exists(dst_file):
+                    shutil.copy2(src_file, dst_file)
+                    new_templates.append(name)
+            if new_templates:
+                print(f"  .zk/ exists — added {len(new_templates)} new template(s): {', '.join(sorted(new_templates))}")
+            else:
+                print(f"  .zk/ already exists, templates up to date.")
+        else:
+            print(f"  .zk/ already exists, skipping.")
     else:
         shutil.copytree(zk_source, zk_dest)
         print(f"  Created .zk/ (config + {len(os.listdir(os.path.join(zk_dest, 'templates')))} templates)")
