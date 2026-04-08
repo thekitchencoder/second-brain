@@ -35,7 +35,6 @@ tasks:
       -v {{.VOL_ZSH}}:/home/coder/.zsh-data
       -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
       -v "{{.ROOT_DIR}}/zk/templates:/usr/local/lib/brain-tools/zk/templates"
-      -p 7778:7778
       -p 7779:7779
       -p 7780:7780
       -e BRAIN_DEV=1
