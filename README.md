@@ -81,28 +81,12 @@ For Ollama, LM Studio, or Anthropic API, run `brain-init` — it offers presets 
 
 You can also create or edit the `.env` file manually at `<vault>/.env`. See the [Configuration](#configuration) section for all available variables.
 
-### Using docker compose
-
-If you prefer docker compose (e.g. for development), clone this repo and use:
-
-```bash
-export BRAIN_HOST_PATH=~/Documents/brain
-cp .env.example .env    # edit as needed
-docker compose up -d
-```
-
-`BRAIN_HOST_PATH` must be exported in your shell — it is not reliably read from `.env` across all platforms.
-
 ## Upgrading
 
 ```bash
-# Pull and restart
-docker pull kitchencoder/second-brain:latest
+docker pull kitchencoder/second-brain:latest   # or :ui
 docker rm -f second-brain
 # Re-run the docker run command from Quick Start step 3 above
-
-# Or with docker compose:
-docker compose pull && docker compose up -d
 ```
 
 Your vault data, Claude config, and shell history are preserved in named volumes. To update templates and skills inside an existing vault, run `brain-init` again — it will update staged host skills and leave existing config untouched.
