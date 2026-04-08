@@ -2,6 +2,29 @@
 
 Docker container for brain management: zk, semantic search, and MCP server for Claude Code and Claude Desktop.
 
+## Two Images
+
+| Image | Use when | Size |
+|-------|----------|------|
+| `kitchencoder/second-brain:latest` | MCP server + brain tools only — Claude Code plugin, API access, no browser UI needed | ~600MB |
+| `kitchencoder/second-brain:ui` | Adds code-server web IDE — open `http://localhost:7778` in your browser | ~1.5GB |
+
+**Base image (MCP only):**
+```bash
+docker run -d --name brain \
+  -v ~/Documents/brain:/brain \
+  -p 7779:7779 -p 7780:7780 \
+  kitchencoder/second-brain:latest
+```
+
+**UI image (includes code-server web IDE):**
+```bash
+docker run -d --name brain \
+  -v ~/Documents/brain:/brain \
+  -p 7778:7778 -p 7779:7779 -p 7780:7780 \
+  kitchencoder/second-brain:ui
+```
+
 ## Quick start
 
 No repo clone needed — the Docker image has everything.
