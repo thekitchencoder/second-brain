@@ -10,6 +10,9 @@ USER root
 # Install code-server via official installer (pre-built release, avoids npm extraction issues)
 RUN curl -fsSL https://code-server.dev/install.sh | sh -s -- --version ${CODE_SERVER_VERSION}
 
+# Claude Code CLI (UI-only — used from the code-server terminal)
+RUN npm install -g @anthropic-ai/claude-code
+
 USER coder
 RUN for ext in \
         foam.foam-vscode \
