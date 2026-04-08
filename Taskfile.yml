@@ -10,6 +10,9 @@ vars:
   VOL_CLAUDE: brain-dev-claude
   VOL_CODESERVER: brain-dev-codeserver
   VOL_ZSH: brain-dev-zsh
+  UI_IMAGE: second-brain-ui:latest
+  UI_CONTAINER: brain-ui
+  VOL_CODESERVER_UI: brain-ui-codeserver
 
 tasks:
   default:
@@ -47,6 +50,37 @@ tasks:
     cmds:
       - task: down
       - task: up
+
+  build-ui:
+    desc: Build the UI image (requires base image built first — run task build first)
+    cmd: docker build -f Dockerfile.ui --build-arg BASE_IMAGE={{.IMAGE}} -t {{.UI_IMAGE}} .
+
+  up-ui:
+    desc: Start the UI container (code-server on 7778 + all brain services)
+    cmd: >
+      docker run -d
+      --name {{.UI_CONTAINER}}
+      -v "{{.BRAIN_HOST_PATH}}:/brain"
+      -v {{.VOL_CLAUDE}}:/home/coder/.claude
+      -v {{.VOL_CODESERVER_UI}}:/home/coder/.local/share/code-server
+      -v {{.VOL_ZSH}}:/home/coder/.zsh-data
+      -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
+      -v "{{.ROOT_DIR}}/zk/templates:/usr/local/lib/brain-tools/zk/templates"
+      -p 7778:7778
+      -p 7779:7779
+      -p 7780:7780
+      -e BRAIN_DEV=1
+      {{.UI_IMAGE}}
+
+  down-ui:
+    desc: Stop and remove the UI container
+    cmd: docker stop {{.UI_CONTAINER}} && docker rm {{.UI_CONTAINER}}
+
+  restart-ui:
+    desc: Restart the UI container
+    cmds:
+      - task: down-ui
+      - task: up-ui
 
   logs:
     desc: Tail container logs

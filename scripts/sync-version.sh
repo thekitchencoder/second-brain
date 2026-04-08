@@ -11,4 +11,7 @@ VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
 
 echo "Syncing version $VERSION to Dockerfile..."
 perl -i -pe "s/^LABEL version=.*/LABEL version=\"$VERSION\"/" Dockerfile
+echo "Synced Dockerfile."
+perl -i -pe "s/^LABEL version=.*/LABEL version=\"$VERSION\"/" Dockerfile.ui
+echo "Synced Dockerfile.ui."
 echo "Done."
