@@ -57,9 +57,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /tmp/sqlite-vec*
 
-# Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
-
 # Brain tools
 COPY tools/ /usr/local/lib/brain-tools/
 COPY zk/ /usr/local/lib/brain-tools/zk/
