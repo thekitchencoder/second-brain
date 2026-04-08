@@ -515,17 +515,18 @@ def generate_env(brain_path, config):
         f"EMBEDDING_BASE_URL={config['embedding_base_url']}",
         f"EMBEDDING_MODEL={config['embedding_model']}",
         f"OPENAI_API_KEY={config.get('openai_api_key', 'local')}",
-        "",
-        "# ── Claude Code (in-container LLM) ───────────────────────────────────────────",
     ]
-    if config.get("anthropic_base_url"):
-        lines.append(f"ANTHROPIC_BASE_URL={config['anthropic_base_url']}")
-    if config.get("anthropic_auth_token"):
-        lines.append(f"ANTHROPIC_AUTH_TOKEN={config['anthropic_auth_token']}")
-    if config.get("anthropic_model"):
-        lines.append(f"ANTHROPIC_MODEL={config['anthropic_model']}")
-    if not config.get("anthropic_base_url"):
-        lines.append("# Using Anthropic API directly (set ANTHROPIC_API_KEY in your environment)")
+    if config.get("anthropic_base_url") or config.get("anthropic_model") or config.get("anthropic_auth_token"):
+        lines.append("")
+        lines.append("# ── Claude Code (in-container LLM) ───────────────────────────────────────────")
+        if config.get("anthropic_base_url"):
+            lines.append(f"ANTHROPIC_BASE_URL={config['anthropic_base_url']}")
+        if config.get("anthropic_auth_token"):
+            lines.append(f"ANTHROPIC_AUTH_TOKEN={config['anthropic_auth_token']}")
+        if config.get("anthropic_model"):
+            lines.append(f"ANTHROPIC_MODEL={config['anthropic_model']}")
+        if not config.get("anthropic_base_url"):
+            lines.append("# Using Anthropic API directly (set ANTHROPIC_API_KEY in your environment)")
 
     lines.append("")
     lines.append("# ── Container ─────────────────────────────────────────────────────────────────")
@@ -715,8 +716,15 @@ def _prompt_env_config_wizard(default_host_path=""):
             config["embedding_base_url"], config["embedding_model"]
         )
 
-    _configure_claude_code_llm(config)
-    _configure_brave(config)
+    if shutil.which("claude"):
+        _configure_claude_code_llm(config)
+        _configure_brave(config)
+    else:
+        # Claude Code not installed in this image (base image) — clear LLM config
+        # so it doesn't land in the vault .env. Switch to the :ui image if you
+        # want Claude Code running inside the container.
+        for key in ("anthropic_base_url", "anthropic_auth_token", "anthropic_model", "brave_api_key"):
+            config[key] = ""
     config["host_path"] = _ask_host_path(default_host_path)
     return config
 
