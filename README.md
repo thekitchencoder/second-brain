@@ -248,33 +248,20 @@ The brain exposes an MCP server with two transports that can run **simultaneousl
 
 Both transports share the same tools and handler logic. When you set `BRAIN_MCP_TRANSPORT=http`, the entrypoint starts the HTTP daemon as a background process alongside the indexer and REST API. The stdio transport remains available via `docker exec` regardless — it spawns a fresh process per invocation.
 
-### Recommended setup: docker compose with HTTP enabled
+### Enabling HTTP transport
 
-This gives every client access from a single `docker compose up -d`:
-
-**1. Add to `.env`:**
+`brain-init` sets `BRAIN_MCP_TRANSPORT=http` in your vault's `.env` by default, and the Quick Start commands expose port 7780. To verify:
 
 ```bash
-BRAIN_MCP_TRANSPORT=http
+# Check vault .env
+grep BRAIN_MCP_TRANSPORT ~/Documents/brain/.env
+
+# If missing, add it and restart
+echo "BRAIN_MCP_TRANSPORT=http" >> ~/Documents/brain/.env
+docker restart second-brain
 ```
 
-**2. Expose the MCP HTTP port in `docker-compose.yml`:**
-
-```yaml
-services:
-  brain:
-    ports:
-      - "${BRAIN_API_PORT:-7779}:7779"   # REST API
-      - "7780:7780"                       # MCP HTTP
-```
-
-**3. Start the container:**
-
-```bash
-docker compose up -d
-```
-
-Now configure each client:
+Once the container is running with port 7780 mapped and HTTP transport enabled, configure each client:
 
 | Client | Transport | How it connects |
 |---|---|---|
@@ -365,23 +352,11 @@ Open WebUI connects over HTTP. With the recommended setup above (HTTP enabled, p
 - **URL:** `http://host.docker.internal:7780/mcp/` (Open WebUI running on the host or in Docker for Mac/Windows)
 - **URL:** `http://second-brain:7780/mcp/` (Open WebUI and brain on the same Docker network)
 
-**If Open WebUI and brain are in separate compose files**, create a shared network so they can reach each other by service name:
+**If Open WebUI and brain are in separate containers**, put them on a shared network so they can reach each other by name:
 
 ```bash
 docker network create brain-net
-```
-
-Add to both compose files:
-
-```yaml
-services:
-  brain:   # or open-webui
-    networks:
-      - brain-net
-
-networks:
-  brain-net:
-    external: true
+docker run -d --name second-brain --network brain-net ... kitchencoder/second-brain:latest
 ```
 
 Then use `http://second-brain:7780/mcp/` as the URL in Open WebUI.
@@ -452,7 +427,7 @@ docker mcp gateway run --profile brain --transport streaming --port 8811
 
 For Claude Desktop, the easiest path is Docker Desktop → MCP Toolkit → MCP Clients → click "Connect" next to Claude Desktop.
 
-> **Note:** The Docker MCP gateway launches its own containers — it does not connect to your existing `docker compose` services. The gateway container runs only the MCP server, not the indexer or REST API. For the full stack, use docker compose with HTTP transport (the recommended setup above).
+> **Note:** The Docker MCP gateway launches its own container — it does not connect to your existing `docker run` container. The gateway runs only the MCP server, not the indexer or REST API. For the full stack (indexer + REST API + MCP), use the Quick Start `docker run` command with HTTP transport enabled.
 
 ### HTTP transport reference
 
@@ -510,6 +485,7 @@ This also registers the brain MCP server — no separate `claude mcp add` needed
 | `brain-setup` | "Set up my brain" / first-time vault setup | Guided vault setup flow with pre-flight check and step-by-step instructions |
 | `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
 | `brain-triage` | "Process my inbox" | Works through `status: raw` notes one at a time — promote, archive, or defer |
+| `brain-distil` | "Distil my research into a primer" | Synthesises one or more source notes into a concise context primer for an effort |
 
 ### Vault-level skills (auto-installed)
 
@@ -548,11 +524,11 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for MCP HTTP mode |
 | `BRAIN_MCP_PORT` | `7780` | Port for MCP HTTP mode |
 | `BRAIN_API_PORT` | `7779` | Port for the REST API |
-| `CODE_SERVER_PORT` | `7778` | Port for the browser VS Code UI |
-| `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint — set to `http://model-runner.docker.internal` for local |
-| `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token — use `ollama` for Docker Model Runner |
-| `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `docker.io/ai/qwen2.5:7B-Q4_0` |
-| `BRAVE_API_KEY` | — | Optional — enables web search in Claude Code via Brave Search MCP |
+| `CODE_SERVER_PORT` | `7778` | Port for the browser VS Code UI (**`:ui` image only**) |
+| `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint (**`:ui` image only**) |
+| `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token (**`:ui` image only**) |
+| `ANTHROPIC_MODEL` | — | Claude Code model name (**`:ui` image only**) |
+| `BRAVE_API_KEY` | — | Enables web search in Claude Code via Brave Search MCP (**`:ui` image only**) |
 
 ### Choosing an embedding model
 
