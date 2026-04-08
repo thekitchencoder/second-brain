@@ -120,6 +120,17 @@ jobs:
         id: get_version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}-ui
+            type=semver,pattern={{major}}.{{minor}}-ui
+            type=semver,pattern={{major}}-ui
+            type=raw,value=ui
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -132,6 +143,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             BASE_IMAGE=kitchencoder/second-brain:${{ steps.get_version.outputs.version }}
-          tags: |
-            kitchencoder/second-brain:ui
-            kitchencoder/second-brain:${{ steps.get_version.outputs.version }}-ui
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
