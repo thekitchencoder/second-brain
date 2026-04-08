@@ -1,9 +1,13 @@
-FROM codercom/code-server:latest
+FROM debian:bookworm-slim
 
 LABEL version="0.5.0"
 
 ARG ZK_VERSION=0.14.1
 ARG SQLITE_VEC_VERSION=0.1.6
+
+# Create coder user (codercom/code-server provided this; we now create it explicitly)
+RUN groupadd --gid 1000 coder \
+    && useradd --uid 1000 --gid coder --shell /bin/zsh --create-home coder
 
 USER root
 
@@ -66,7 +70,9 @@ RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-api \
               /usr/local/lib/brain-tools/brain-init \
               /usr/local/lib/brain-tools/brain-template-sync \
-              /usr/local/lib/brain-tools/entrypoint.sh
+              /usr/local/lib/brain-tools/entrypoint.sh \
+              /usr/local/lib/brain-tools/entrypoint-ui.sh \
+              /usr/local/lib/brain-tools/setup.sh
 
 # Shell environment — copy to both coder and root (container runs as root)
 COPY tools/brain.zshrc /home/coder/.zshrc
@@ -86,7 +92,7 @@ ENV PATH="/usr/local/lib/brain-tools:$PATH"
 ENV PYTHONPATH="/usr/local/lib/brain-tools"
 ENV HISTFILE="/home/coder/.zsh-data/history"
 
-EXPOSE 7778 7779 7780
+EXPOSE 7779 7780
 
 # Seed files for Claude Code user config — copied idempotently at startup
 # so settings survive rebuilds once edited. See tools/entrypoint.sh.
@@ -99,27 +105,5 @@ COPY --chown=coder:coder brain-skills/ /usr/local/lib/brain-tools/claude-seed/sk
 RUN mkdir -p /home/coder/.claude /home/coder/.zsh-data \
     && chown coder:coder /home/coder/.claude /home/coder/.zsh-data
 
-# VS Code extensions — must run as coder user
-USER coder
-RUN for ext in \
-        foam.foam-vscode \
-        yzhang.markdown-all-in-one \
-        bierner.markdown-preview-github-styles \
-        bierner.markdown-mermaid \
-        zaaack.markdown-editor; do \
-    for i in 1 2 3; do \
-        code-server --install-extension "$ext" && break; \
-        echo "Retry $i for $ext..."; \
-        sleep 5; \
-    done; \
-    done
-
-# Bake in settings and keybindings
-COPY --chown=coder:coder code-server/settings.json /home/coder/.local/share/code-server/User/settings.json
-COPY --chown=coder:coder code-server/keybindings.json /home/coder/.local/share/code-server/User/keybindings.json
-
-USER coder
-
 WORKDIR /brain
 ENTRYPOINT ["/usr/local/lib/brain-tools/entrypoint.sh"]
-CMD ["--bind-addr", "0.0.0.0:7778", "--user-data-dir", "/home/coder/.local/share/code-server", "--auth", "none", "/brain"]
