@@ -9,23 +9,23 @@ Scaffold a new effort in the second-brain with two seed documents.
 
 ## Path Notes
 
-The vault lives inside a Docker container. Do NOT use Glob or filesystem tools to inspect vault paths — they will search the wrong directory. Use MCP tools only. When MCP tools return absolute paths like `/brain/Efforts/foo.md`, pass them directly back to other MCP tools unchanged.
+The vault lives inside a Docker container — use MCP tools to inspect vault paths. Filesystem tools (Glob, Read, etc.) will search the host, not the vault. When MCP tools return absolute paths like `/brain/Efforts/foo.md`, pass them directly back to other MCP tools unchanged.
 
 ## Steps
 
 1. Ask for a project name if not provided. Derive a kebab-case slug (e.g. `my-project-name`).
 
-2. **Call `brain_query(type="effort")` NOW** to see existing efforts and understand the established pattern. Do not proceed until you have results.
+2. Run `brain_query(type="effort")` to see existing efforts and understand the established pattern.
 
-3. **Call `brain_search(query=<topic>)` NOW** to find any prior related work. Do not proceed until you have results. For any relevant hit, call `brain_read(filepath)` to get the full content before drafting new notes.
+3. Run `brain_search(query=<topic>)` to find any prior related work. For any relevant hit, call `brain_read(filepath)` to get the full content before drafting new notes.
 
-4. **Call `brain_templates()` NOW** to see what templates are available. Then create two notes:
+4. Run `brain_templates()` to see what templates are available. Then create two notes:
 
 ### Note 1: Effort Note
 
-**Call `brain_create(template="effort", title="<Project Name>", directory="Efforts/")` NOW.** Note the returned filepath (should be `Efforts/<slug>.md`).
+Run `brain_create(template="effort", title="<Project Name>", directory="Efforts/")`. Note the returned filepath (should be `Efforts/<slug>.md`).
 
-Then populate it using `brain_edit` — **do NOT call `brain_write`**:
+Populate using `brain_edit`, not `brain_write`:
 
 ```
 brain_edit(op=update_frontmatter, filepath=<effort filepath>, frontmatter={
@@ -52,9 +52,9 @@ Ask whether this effort has a linked dev repo on this machine. If yes, add the `
 
 ### Note 2: Context Primer
 
-**Call `brain_create(template="context-primer", title="<Project Name> — Context", directory="Efforts/<slug>/")` NOW.** Note the returned filepath.
+Run `brain_create(template="context-primer", title="<Project Name> — Context", directory="Efforts/<slug>/")`. Note the returned filepath.
 
-Then populate it using `brain_edit` — **do NOT call `brain_write`**:
+Populate using `brain_edit`, not `brain_write`:
 
 ```
 brain_edit(op=update_frontmatter, filepath=<primer filepath>, frontmatter={
@@ -84,4 +84,4 @@ brain_edit(op=insert_wikilink, filepath=<primer filepath>, target="<Project Name
 - **Context primer lives at `Efforts/<slug>/`** — always in the subfolder.
 - **No invented content.** Populate from what the user has provided and what `brain_search` returns.
 - **`type: project` is deprecated.** Always use `type: effort`.
-- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit`.
+- Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.

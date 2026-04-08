@@ -6,6 +6,7 @@ __pycache__/
 *.pyo
 .pytest_cache/
 docker-compose.override.yml
+.env.local
 skills/*.zip
 .worktrees/
 tests/fixtures/vault/.ai/

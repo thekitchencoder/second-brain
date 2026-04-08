@@ -14,9 +14,9 @@ Move or consolidate notes into an effort. Delegates all per-file moves to `brain
 - **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
 - **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
 
-## CRITICAL: Always use brain-rename per file
+## Why brain-rename is required for every move
 
-Do NOT use write+delete to move notes. Direct write+delete silently breaks all `[[wikilinks]]` pointing to the moved file across the vault. Every file move MUST go through `brain-rename` which handles wikilink updates automatically.
+write+delete silently breaks all `[[wikilinks]]` pointing to the moved file across the vault. Every file move goes through `brain-rename`, which finds and updates wikilinks automatically before renaming.
 
 ## Flow
 
@@ -24,14 +24,14 @@ Do NOT use write+delete to move notes. Direct write+delete silently breaks all `
 
 Accept any of:
 - Explicit list from the user
-- A directory to move in bulk: **Call `Glob(pattern="<source dir>/**/*.md")` NOW**
-- A search: **Call `brain_search(query=<topic>)` NOW** and confirm which results to include
+- A directory to move in bulk: run `Glob(pattern="<source dir>/**/*.md")`
+- A search: run `brain_search(query=<topic>)` and confirm which results to include
 
 ### 2. Identify the destination effort
 
 Accept: effort name, slug, or path.
 
-**Call `Glob(pattern="Efforts/<slug>.md")` NOW** to confirm it exists. If not found, ask the user to confirm the slug or create the effort first using the `brain-create-effort` skill.
+Run `Glob(pattern="Efforts/<slug>.md")` to confirm it exists. If not found, ask the user to confirm the slug or create the effort first using the `brain-create-effort` skill.
 
 ### 3. Confirm before touching anything
 
@@ -87,10 +87,10 @@ Added 4 links to Efforts/<slug>.md under ## Notes.
 
 ## Rules
 
-- **Never use write+delete to move files.** Always use `brain-rename` — it preserves wikilinks.
-- **Confirm the plan before moving anything.** Show source → destination for every file.
-- **The destination effort must already exist.** If it doesn't, use `brain-create-effort` first.
-- **Report each move.** Don't batch silently — the user needs to know what changed.
+- Always use brain-rename for file moves — write+delete breaks wikilinks.
+- Confirm the plan before moving anything. Show source → destination for every file.
+- The destination effort must already exist. If it doesn't, use `brain-create-effort` first.
+- Report each move. Don't batch silently — the user needs to know what changed.
 
 ## Baseline Failures This Skill Addresses
 

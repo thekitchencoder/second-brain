@@ -51,12 +51,12 @@ def _build_server():
             ),
             Tool(
                 name="brain_query",
-                description="Structured metadata query using zk. Filter notes by tag, status, or type.",
+                description="Structured metadata query using zk. Filter notes by tag, status, or type. Use status='unset' to find notes with no status field.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "tag": {"type": "string"},
-                        "status": {"type": "string"},
+                        "status": {"type": "string", "description": "Filter by status value, or 'unset' to find notes missing the status field entirely."},
                         "type": {"type": "string"},
                     },
                 },

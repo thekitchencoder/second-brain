@@ -9,7 +9,7 @@ Guided first-time vault setup. Ask the right questions, then use MCP tools to bu
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Pre-flight check
 
@@ -23,9 +23,9 @@ The vault uses an ACE-aligned hierarchy. `brain-init` creates these folders — 
 
 | Folder | Purpose |
 |---|---|
-| `Atlas/` | Config, dashboards, evergreen reference notes |
+| `Atlas/` | Config, dashboards, stable reference notes (`status: current`) |
 | `Efforts/` | All active work: projects, areas, ongoing focus |
-| `Cards/` | Atomic evergreen notes, flat, no hierarchy |
+| `Cards/` | Atomic notes, flat, no hierarchy — stable cards use `status: current` |
 | `Calendar/` | Daily notes and time-anchored content |
 | `Sources/` | Books, articles, reference material |
 
@@ -48,7 +48,7 @@ Always use `brain_create` with these templates — never `brain_write` a new not
 
 ## Setup sequence
 
-Work through this in order. Do not skip steps.
+Work through in order.
 
 ### Step 1 — Understand the user's context
 
@@ -118,6 +118,6 @@ If the effort has a linked software repository:
 
 - **No folder invention.** Only: Atlas, Efforts, Cards, Calendar, Sources
 - **No notes without frontmatter.**
-- **Never call `brain_write` on a file just created by `brain_create`.** Use `brain_edit`.
+- Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
 - **No placeholder content.** If a section has nothing to say yet, leave the heading and move on.
-- **Do not ask for information you can infer** (created date, file naming).
+- Infer what you can (created date, file naming) rather than asking.

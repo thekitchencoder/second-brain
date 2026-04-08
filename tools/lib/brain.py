@@ -130,13 +130,78 @@ def handle_brain_query(
         if value:
             if err := _validate_query_param(name, value):
                 return err
+
+    # status and type are frontmatter fields — zk's --match does FTS on note body
+    # and won't find them reliably. Walk the vault and check frontmatter directly.
+    # tag uses zk's native --tag filter, which is index-backed and correct.
+    if status or note_type:
+        # Collect candidates via zk if a tag filter is also present, otherwise all files
+        if tag:
+            # Refresh zk index first so tag filter is current
+            try:
+                subprocess.run(
+                    ["zk", "index", "--quiet"],
+                    cwd=brain_path, capture_output=True, text=True, timeout=60
+                )
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+            try:
+                result = subprocess.run(
+                    ["zk", "list", "--quiet", "--format", "{{path}}", "--tag", tag],
+                    cwd=brain_path, capture_output=True, text=True, timeout=30
+                )
+            except FileNotFoundError:
+                return "zk is not installed or not on PATH. Is the container running?"
+            except subprocess.TimeoutExpired:
+                return "Error: zk timed out"
+            if result.returncode != 0:
+                return f"zk list failed: {result.stderr}"
+            candidates = [
+                os.path.join(brain_path, f.strip())
+                for f in result.stdout.splitlines() if f.strip()
+            ]
+        else:
+            # No tag filter — walk all markdown files
+            candidates = []
+            for root, dirs, fnames in os.walk(brain_path):
+                dirs[:] = [d for d in dirs if not d.startswith(".") and d != "templates"]
+                candidates += [
+                    os.path.join(root, f) for f in fnames if f.endswith(".md")
+                ]
+
+        files = []
+        for fpath in candidates:
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception:
+                continue
+            meta, _ = extract_frontmatter(content)
+            if status == "unset":
+                if meta.get("status"):
+                    continue
+            elif status and meta.get("status") != status:
+                continue
+            if note_type and meta.get("type") != note_type:
+                continue
+            files.append(os.path.relpath(fpath, brain_path))
+
+        if not files:
+            return "No notes matched the query."
+        return "\n".join(sorted(files))
+
+    # tag-only query: use zk with index refresh
+    try:
+        subprocess.run(
+            ["zk", "index", "--quiet"],
+            cwd=brain_path, capture_output=True, text=True, timeout=60
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
     cmd = ["zk", "list", "--quiet", "--format", "{{path}}"]
     if tag:
         cmd += ["--tag", tag]
-    if status:
-        cmd += ["--match", f"status:{status}"]
-    if note_type:
-        cmd += ["--match", f"type:{note_type}"]
     try:
         result = subprocess.run(cmd, cwd=brain_path, capture_output=True, text=True, timeout=30)
     except FileNotFoundError:

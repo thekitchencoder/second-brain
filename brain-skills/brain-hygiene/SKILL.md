@@ -5,13 +5,11 @@ description: Use when asked to tidy, audit, or health-check the second-brain —
 
 # Brain Hygiene
 
-Systematic audit of the second-brain. Five checks in order. Fix what is unambiguous; flag everything else.
+Systematic audit of the second-brain. Dispatch five parallel subagents to scan the vault; interpret findings and handle repairs in the main conversation.
 
 This skill runs in the vault root with full filesystem access (Glob, Grep, Read, Edit). Use MCP tools for semantic operations, filesystem tools for structural scans and repairs.
 
-## Check 1: Frontmatter Completeness
-
-Use `brain_query` (or `brain_search` broadly) to enumerate notes, then `Read` each file to inspect its frontmatter. For batch inspection, Read is faster than `brain_read` since there is no MCP round-trip.
+## Schema Reference
 
 **Required universal fields (all types):**
 ```
@@ -21,78 +19,182 @@ Plus a date field: `created` for all types except `discovery`, which uses `captu
 
 **Valid types:** `effort`, `discovery`, `context-primer`, `spec`, `adr`, `source`, `meeting`, `daily`
 
-**Deprecated types — fix on sight:**
-- `type: project` → migrate to `type: effort`
-- `type: moc` → migrate to `type: effort`
+**Valid status values by type:**
 
-**Deprecated fields — remove on sight:**
-`project:` (as a field; use `^project:\s` as the regex to avoid matching keys like `project-id:`), `scope:`, `technical-level:`, `phase:`, `stack:`, `repo:`, `agents:`, `priority:`, `complexity:`, `delegate:`, `assignee:`
+| Type | Valid status values |
+|------|-------------------|
+| `discovery` | `raw`, `draft`, `current`, `archived` |
+| `effort` | `active`, `archived` |
+| `context-primer` | `draft`, `current`, `archived` |
+| `spec`, `doc` | `draft`, `current`, `archived` |
+| `adr` | `proposed`, `accepted`, `deprecated` |
+| `meeting`, `daily` | status field optional |
 
-Exceptions for `adr` notes: `id:` and `date:` (the decision date, distinct from `created:`) are both valid.
+**`intensity` field — required on `type: effort`:**
 
-**Fixing deprecated types** (after confirming with user):
-- `brain_edit(op=update_frontmatter, filepath=..., frontmatter={"type": "effort"})`
+| Value | Meaning |
+|-------|---------|
+| `focus` | Primary attention right now |
+| `ongoing` | Background / regular, not primary focus |
+| `simmering` | Set aside — intent to return |
 
-**Fixing deprecated fields** — `update_frontmatter` cannot remove keys; use find_replace instead:
-- `brain_edit(op=find_replace, filepath=..., find="^scope:.*\n", replace="", regex=true)`
-- Apply the same pattern for each deprecated scalar field name
-- **Exception for list-valued fields** (`stack:`, `agents:`): the key line plus its indented items must be removed manually — a single-line regex will only strip the key and leave orphaned `  - ""` lines. Read the note, identify the full block, and use a multiline `find_replace` to remove it.
+**Deprecated types:** `project` → `effort`, `moc` → `effort`
 
-**Fixing missing `created`:** use `update_frontmatter` with the mtime date.
+**Deprecated intensity value:** `on` → `focus`
 
-**`captured:` on discovery notes:** this is the canonical date field for `type: discovery` (not `created:`). Older notes may have a datetime value (`2024-03-01T15:04:05`) rather than date-only — that format difference is harmless, do not migrate unless the user asks.
+**Deprecated fields (remove when found):**
+`project:` (use `^project:\s` regex to avoid matching `project-id:`), `scope:`, `technical-level:`, `phase:`, `stack:`, `repo:`, `agents:`, `priority:`, `complexity:`, `delegate:`, `assignee:`
 
-**Do not** batch-fix without reading the content first.
+**ADR exceptions:** `id:` and `date:` (decision date, distinct from `created:`) are valid on `type: adr`.
 
-## Check 2: Orphaned Notes
+---
 
-**Outbound orphans:** Read each file and check for absence of `[[wikilinks]]`. These notes link to nothing.
+## Flow
 
-**Inbound orphans:** For each note, call `brain_backlinks(filepath)`. Notes where backlinks returns empty are unreferenced. No need to build a manual filename index.
+### 1. Dispatch all five checks as parallel subagents
 
-Report both sets with title and path. Do not delete.
+Each subagent scans and returns a structured report. No repairs — findings only.
 
-## Check 3: Broken Wikilink Targets
+---
 
-1. Build a filename index: collect all `.md` filenames (without extension) via `Glob(pattern="**/*.md")`
-2. `Grep(pattern="\\[\\[([^\\]|]+)", glob="**/*.md")` to extract all wikilink targets
-3. For each target, check if it exists in the index
-4. Flag any target not found
+**Subagent 1 — Frontmatter audit**
 
-### Wikilink Repair
+```
+Walk every .md file under the vault root using Glob(pattern="**/*.md"). Skip any path containing ".trash/".
+For each file, Read it and parse the YAML frontmatter block (between the --- delimiters).
+Check for the following and record any violations found:
 
-After flagging broken targets, offer to **fix** them:
+- Missing any of: type, title, status, tags
+- Missing date field: "created" for all types; "captured" (not "created") for type: discovery
+- type not in: effort, discovery, context-primer, spec, adr, source, meeting, daily
+- Deprecated type: "project" or "moc"
+- status value invalid for the note's type (see the valid status table)
+- intensity field missing on type: effort
+- Deprecated intensity value: "on" (should be "focus")
+- Any deprecated field present: project (as standalone key), scope, technical-level, phase,
+  stack, repo, agents, priority, complexity, delegate, assignee
+- For type: context-primer — count the words in the note body (excluding frontmatter).
+  Flag as "context primer too large: N words" if over 400 words.
 
-1. For each broken `[[target]]`, fuzzy-match against the filename index (case-insensitive, ignore hyphens vs spaces)
-2. If a single close match is found, propose: `[[broken-target]]` → `[[correct-target]]`
-3. If multiple candidates, show them and ask the user to pick
-4. Apply fixes with `brain_edit(op=find_replace, filepath=..., find="[[broken-target]]", replace="[[correct-target]]")`
-5. If no match is found, flag only — do not create stub documents
+Return a JSON list:
+[{ "path": "Cards/foo.md", "issues": ["missing: status", "deprecated type: project"] }, ...]
 
-Report all repairs: "Fixed 3 broken wikilinks across 5 files."
+Return an empty list if no violations found. Do not fix anything.
+```
 
-## Check 4: Stale Drafts
+---
 
-Run `brain_query(status=draft)`. Report each result with its title and `created` date.
+**Subagent 2 — Orphan scan**
 
-Present to the user for a decision on each: promote to `current`, move to `archived`, or delete.
+```
+Walk every .md file using Glob(pattern="**/*.md"). Skip paths containing ".trash/" or "Calendar/".
+For each file:
+  - Outbound check: Read the file body and look for [[wikilinks]]. If none found, record as outbound orphan.
+  - Inbound check: call brain_backlinks(filepath). If the result is empty, record as inbound orphan.
 
-**Do not auto-promote.** Drafts are promoted by the human.
+Return:
+{ "no_outbound": ["Cards/foo.md", ...], "no_inbound": ["Cards/bar.md", ...] }
 
-## Check 5: Trash
+Calendar/daily notes are excluded — they are expected to have no inbound links.
+```
 
-`Glob(pattern=".trash/**/*.md")`. If the result is empty, skip this check.
+---
 
-For each file found:
-- Derive the original path: `Read` the `.origin` sidecar (same stem, `.origin` extension) if present; otherwise strip the `.trash/` prefix from the path.
-- Show: original path, trashed date (file mtime), current trash path.
-- Ask the user: **[restore]** | **[permanently delete]** | **[skip]**
+**Subagent 3 — Broken wikilinks**
 
-**Restore:** `brain_restore(trash_path)`
+```
+1. Build a filename index: Glob(pattern="**/*.md") → collect each stem (filename without extension)
+   and its full path. Store as a list of { stem, path } pairs.
 
-**Permanently delete:** remove the `.md` file and its `.origin` sidecar (if present) via `rm`. This is irreversible — confirm per file.
+2. Grep(pattern="\[\[([^\]|#]+)", glob="**/*.md", output_mode="content") to find all wikilink targets.
+   Extract the capture group (the target text). Skip targets that start with "http" or contain "#".
 
-Never auto-empty the trash.
+3. For each unique target:
+   - Normalise: lowercase, replace spaces and underscores with hyphens.
+   - Check if the normalised target matches any stem in the index (case-insensitive, hyphens=spaces).
+   - If no match found, record as broken.
+
+4. For each broken target, find close candidates in the index:
+   - Exact case-insensitive match after normalisation: strong candidate
+   - All words present in the stem: weak candidate
+
+Return:
+[{ "source": "Cards/foo.md", "broken_target": "Bad Title", "candidates": ["good-title", "good-title-v2"] }, ...]
+
+Return an empty list if no broken targets found.
+```
+
+---
+
+**Subagent 4 — Stale drafts**
+
+```
+Run brain_query(status="draft"). For each result, call brain_read(filepath) to get the title and created fields.
+Return: [{ "path": "...", "title": "...", "created": "YYYY-MM-DD" }]
+Sort by created ascending (oldest first).
+Return an empty list if no drafts found.
+```
+
+---
+
+**Subagent 5 — Trash scan**
+
+```
+Glob(pattern=".trash/**/*.md"). For each file found:
+- Check for a .origin sidecar: same stem, .origin extension. If present, Read it to get the original path.
+  If absent, derive original path by stripping ".trash/" from the path.
+- Get the file's modification date using: Bash("stat -f '%Sm' -t '%Y-%m-%d' <path>")
+
+Return: [{ "trash_path": "...", "original_path": "...", "trashed_date": "YYYY-MM-DD" }]
+Return an empty list if no trash files found.
+```
+
+---
+
+### 2. Present findings and handle repairs
+
+Wait for all five subagents to return, then work through each check in order.
+
+**Check 1 — Frontmatter violations**
+
+Group results by issue type. For each violation, Read the file before proposing a fix:
+
+| Issue | Fix |
+|-------|-----|
+| Missing `created` | `brain_edit(op=update_frontmatter, frontmatter={"created": "<mtime-date>"})` — no confirmation needed |
+| Missing `type`, `title`, `status`, `tags` | Propose value, confirm with user, then `update_frontmatter` |
+| `type: project` or `type: moc` | Confirm with user → `update_frontmatter({"type": "effort"})` |
+| `intensity: on` | Confirm with user → `update_frontmatter({"intensity": "focus"})` |
+| Invalid status for type | Propose correct value, confirm, then `update_frontmatter` |
+| Deprecated scalar field | Confirm with user → `brain_edit(op=find_replace, find="^fieldname:.*\n", replace="", regex=true)` |
+| Deprecated list field (`stack:`, `agents:`) | Read the full block, confirm with user, use multiline `find_replace` to remove key + indented items |
+
+**Check 2 — Orphans**
+
+Report both lists (no outbound links, no inbound links) with title and path. Flag only — do not delete.
+
+**Check 3 — Broken wikilinks**
+
+For each broken target:
+- One candidate → propose fix, confirm, then: `brain_edit(op=find_replace, filepath=<source>, find="[[broken-target]]", replace="[[correct-target]]")`
+- Multiple candidates → show options, ask user to pick
+- No candidates → flag only, do not create stub notes
+
+Report repairs: "Fixed N broken wikilinks across M files."
+
+**Check 4 — Stale drafts**
+
+Show list oldest-first. For each, ask: **[promote to current]** | **[archive]** | **[skip]**
+
+- Promote: `brain_edit(op=update_frontmatter, frontmatter={"status": "current"})`
+- Archive: `brain_edit(op=update_frontmatter, frontmatter={"status": "archived"})`
+
+**Check 5 — Trash**
+
+For each entry, show original path + trashed date and ask: **[restore]** | **[delete]** | **[skip]**
+
+- Restore: `brain_restore(trash_path)`
+- Delete: `Bash("rm <trash-path>")` (and `.origin` sidecar if present) — irreversible, confirm per file
 
 ---
 
@@ -100,21 +202,21 @@ Never auto-empty the trash.
 
 | Issue | Action |
 |-------|--------|
-| Missing `created` (mtime available) | Fix — `update_frontmatter` |
-| Missing `type`, `title`, `status`, `tags` | Propose + ask — `update_frontmatter` |
-| `type: project` or `type: moc` | Propose migration + ask — `update_frontmatter` |
-| Deprecated field present | Propose removal + ask — `find_replace` with regex |
+| Missing `created` (mtime available) | Fix automatically |
+| Missing `type`, `title`, `status`, `tags` | Propose + confirm |
+| `type: project` or `type: moc` | Propose migration + confirm |
+| `intensity: on` on an effort | Propose migration to `focus` + confirm |
+| Deprecated field present | Propose removal + confirm |
 | Outbound orphan (no links out) | Flag |
-| Inbound orphan (`brain_backlinks` returns empty) | Flag |
-| Broken wikilink target | Fix — fuzzy-match and `find_replace` (confirm first) |
-| Stale draft | Flag — do not auto-promote |
+| Inbound orphan (no backlinks) | Flag |
+| Broken wikilink target | Fix with fuzzy-match (confirm first) |
+| Stale draft | Flag — user decides |
+| Context primer over 400 words | Flag — suggest trimming or splitting via brain-extract |
 | Empty file | Flag — do not delete without confirmation |
 
 ## Rules
 
 - Read the file before proposing any fix.
-- Never delete anything without explicit user confirmation.
-- Never create stub documents for missing wikilink targets.
-- Never auto-promote `status: draft` notes.
-- Use filesystem tools (Glob, Grep, Read) for structural scans — they are faster than MCP for batch operations.
-- Use MCP tools (brain_edit, brain_query, brain_backlinks) for semantic operations and edits.
+- Always get explicit user confirmation before deleting anything.
+- Subagents scan only — all repairs happen in the main conversation.
+- Drafts are promoted by the user, not auto-promoted.

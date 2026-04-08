@@ -86,7 +86,7 @@ ENV PATH="/usr/local/lib/brain-tools:$PATH"
 ENV PYTHONPATH="/usr/local/lib/brain-tools"
 ENV HISTFILE="/home/coder/.zsh-data/history"
 
-EXPOSE 7779 8080
+EXPOSE 7778 7779 7780
 
 # Seed files for Claude Code user config — copied idempotently at startup
 # so settings survive rebuilds once edited. See tools/entrypoint.sh.
@@ -104,7 +104,9 @@ USER coder
 RUN for ext in \
         foam.foam-vscode \
         yzhang.markdown-all-in-one \
-        bierner.markdown-preview-github-styles; do \
+        bierner.markdown-preview-github-styles \
+        bierner.markdown-mermaid \
+        zaaack.markdown-editor; do \
     for i in 1 2 3; do \
         code-server --install-extension "$ext" && break; \
         echo "Retry $i for $ext..."; \
@@ -120,4 +122,4 @@ USER coder
 
 WORKDIR /brain
 ENTRYPOINT ["/usr/local/lib/brain-tools/entrypoint.sh"]
-CMD ["--bind-addr", "0.0.0.0:8080", "--user-data-dir", "/home/coder/.local/share/code-server", "--auth", "none", "/brain"]
+CMD ["--bind-addr", "0.0.0.0:7778", "--user-data-dir", "/home/coder/.local/share/code-server", "--auth", "none", "/brain"]

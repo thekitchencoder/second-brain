@@ -8,15 +8,34 @@ A Docker-packaged second-brain system: Python MCP server + semantic search + zk 
 
 ## Development Setup
 
-```bash
-# Build and run dev container (uses docker-compose.override.yml to build from source)
-BRAIN_HOST_PATH=/path/to/vault docker compose up
+Use the `Makefile` for all dev tasks. Set `BRAIN_HOST_PATH` in `.env.local` (gitignored) once:
 
-# Run with prebuilt image
-BRAIN_HOST_PATH=/path/to/vault docker compose -f docker-compose.yml up
+```
+# .env.local
+BRAIN_HOST_PATH=/path/to/your/vault
 ```
 
-`BRAIN_HOST_PATH` must be exported in the shell before `docker compose up` — it is NOT in `.env`.
+Then:
+
+```bash
+task build       # Build dev image (layer-cached — fast after first build)
+task up          # Start container (uses docker run directly, not compose)
+task logs        # Tail logs
+task shell       # Open zsh in container
+task down        # Stop and remove container
+```
+
+`task up` bind-mounts `tools/lib/` and `zk/templates/` and sets `BRAIN_DEV=1`, so Python and template changes are live immediately. Skills are force-reseeded from the image on every restart.
+
+### Iterating without rebuilding
+
+| What changed | Command | Notes |
+|---|---|---|
+| `tools/lib/*.py` | just save | bind-mounted — live immediately |
+| `zk/templates/` | just save | bind-mounted — live immediately |
+| `skills/`, `brain-skills/` | `task sync-skills` | copies to `~/.claude/skills/`; run `/reload` in Claude Code |
+| Entrypoint or image env | `task restart` | skills auto-reseeded from image |
+| Dockerfile (packages, extensions) | `task build && task restart` | full rebuild, then restart |
 
 ## Testing
 

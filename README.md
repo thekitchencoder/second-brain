@@ -22,11 +22,11 @@ docker run -d --name second-brain --restart unless-stopped \
   -v second-brain-claude:/home/coder/.claude \
   -v second-brain-code-server:/home/coder/.local/share/code-server \
   -v second-brain-zsh:/home/coder/.zsh-data \
-  -p 8080:8080 -p 7779:7779 -p 7780:7780 \
+  -p 7778:7778 -p 7779:7779 -p 7780:7780 \
   kitchencoder/second-brain:latest
 
 # 4. Open the browser UI
-open http://localhost:8080
+open http://localhost:7778
 ```
 
 The wizard lets you pick your model provider and embedding model. It offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run it any time:
@@ -82,7 +82,7 @@ No re-indexing required unless the release notes say otherwise.
 
 ## Browser UI (code-server)
 
-The container includes a browser-based VS Code at `http://localhost:8080` — no password, single-user. This is the primary interface when running at a machine where Obsidian can't be installed.
+The container includes a browser-based VS Code at `http://localhost:7778` — no password, single-user. This is the primary interface when running at a machine where Obsidian can't be installed.
 
 **Features:**
 - Full VS Code in the browser with your vault open
@@ -99,7 +99,7 @@ Claude Code is pre-wired with:
 
 ```bash
 # Open the browser UI
-open http://localhost:8080
+open http://localhost:7778
 
 # In the VS Code integrated terminal, Claude Code is ready:
 claude
@@ -533,7 +533,7 @@ See [`skills/README.md`](skills/README.md) for details on what each skill does.
 | `BRAIN_MCP_HOST` | `0.0.0.0` | Bind address for MCP HTTP mode |
 | `BRAIN_MCP_PORT` | `7780` | Port for MCP HTTP mode |
 | `BRAIN_API_PORT` | `7779` | Port for the REST API |
-| `CODE_SERVER_PORT` | `8080` | Port for the browser VS Code UI |
+| `CODE_SERVER_PORT` | `7778` | Port for the browser VS Code UI |
 | `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint — set to `http://model-runner.docker.internal` for local |
 | `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token — use `ollama` for Docker Model Runner |
 | `ANTHROPIC_MODEL` | — | Claude Code model name e.g. `docker.io/ai/qwen2.5:7B-Q4_0` |

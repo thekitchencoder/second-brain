@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+dotenv: ['.env.local']
+
+vars:
+  IMAGE: second-brain-dev:latest
+  CONTAINER: brain
+  VOL_CLAUDE: brain-dev-claude
+  VOL_CODESERVER: brain-dev-codeserver
+  VOL_ZSH: brain-dev-zsh
+
+tasks:
+  default:
+    desc: List available tasks
+    cmd: task --list
+    silent: true
+
+  build:
+    desc: Build the dev image (layer-cached — fast after first build)
+    cmd: docker build -t {{.IMAGE}} .
+
+  up:
+    desc: Start the container (bind-mounts tools/lib and zk/templates for live reload)
+    cmd: >
+      docker run -d
+      --name {{.CONTAINER}}
+      -v "{{.BRAIN_HOST_PATH}}:/brain"
+      -v {{.VOL_CLAUDE}}:/home/coder/.claude
+      -v {{.VOL_CODESERVER}}:/home/coder/.local/share/code-server
+      -v {{.VOL_ZSH}}:/home/coder/.zsh-data
+      -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
+      -v "{{.ROOT_DIR}}/zk/templates:/usr/local/lib/brain-tools/zk/templates"
+      -p 7778:7778
+      -p 7779:7779
+      -p 7780:7780
+      -e BRAIN_DEV=1
+      {{.IMAGE}}
+
+  down:
+    desc: Stop and remove the container
+    cmd: docker stop {{.CONTAINER}} && docker rm {{.CONTAINER}}
+
+  restart:
+    desc: Restart — picks up entrypoint/skill changes; skills are force-reseeded on start
+    cmds:
+      - task: down
+      - task: up
+
+  logs:
+    desc: Tail container logs
+    cmd: docker logs -f {{.CONTAINER}}
+
+  shell:
+    desc: Open a shell in the running container
+    interactive: true
+    cmd: docker exec -it {{.CONTAINER}} zsh
+
+  sync-skills:
+    desc: Copy skills live into the running container (run /reload in Claude Code after)
+    cmds:
+      - docker cp skills/. {{.CONTAINER}}:/home/coder/.claude/skills/
+      - docker cp brain-skills/. {{.CONTAINER}}:/home/coder/.claude/skills/
+      - echo "Skills synced — run /reload in Claude Code."
+
+  sync:
+    desc: Full sync — skills + Python lib + templates (no restart, no rebuild)
+    cmds:
+      - task: sync-skills
+      - docker cp tools/lib/. {{.CONTAINER}}:/usr/local/lib/brain-tools/lib/
+      - docker cp zk/templates/. {{.CONTAINER}}:/usr/local/lib/brain-tools/zk/templates/
+      - echo "Full sync complete."
+
+  test:
+    desc: Run unit tests (no Docker needed)
+    cmd: python3 -m pytest -m "not integration"

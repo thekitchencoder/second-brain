@@ -1,27 +1,41 @@
 ---
 name: brain-triage
-description: Use when the user wants to work through their discovery inbox, process raw notes, or clear out unreviewed captures. Triggers on "triage", "process my inbox", "what's in my inbox", "clear raw notes".
+description: Use when the user wants to triage their discovery notes, review unreviewed captures, or work through notes awaiting a decision. Triggers on "triage", "what's waiting for review", "review my notes", "what needs triaging".
 ---
 
 # Brain Triage
 
-Work through `status: raw` discovery notes one at a time. Promote, archive, or defer each one.
+Review notes with `status: raw` or no status set — one at a time. Promote, archive, or defer each one.
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Flow
 
-### 1. Find the inbox
+### 1. Find and sort notes awaiting review (subagent)
 
-**Call `brain_query(status="raw")` NOW.** This returns all notes with `status: raw`.
+Dispatch a subagent with this task:
 
-Report: "You have N raw notes. Working through them oldest first."
+```
+Run both queries in parallel:
+- brain_query(status="raw")   — notes explicitly marked for review
+- brain_query(status="unset") — notes with no status field at all
 
-Call `brain_read` on each to get `captured:` (discovery notes) or `created:` (all other types) for sorting. Sort oldest first.
+Merge and deduplicate. For each result, call brain_read(filepath) to get:
+- title
+- created (or captured for type: discovery)
+- type
+- A one-sentence excerpt from the note body
 
-### 2. Process one note at a time
+Sort by date ascending (oldest first).
+
+Return: [{ "path": "...", "title": "...", "date": "YYYY-MM-DD", "type": "...", "excerpt": "..." }, ...]
+```
+
+Report to the user: "You have N notes awaiting review. Working through them oldest first."
+
+### 2. Review one note at a time
 
 For each note:
 
@@ -54,7 +68,7 @@ For each note:
 
 ### 4. Summary
 
-When inbox is empty or user stops:
+When the queue is empty or user stops:
 
 ```
 Triage complete: 3 promoted, 2 archived, 4 deferred, 2 remaining
