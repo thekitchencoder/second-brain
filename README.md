@@ -103,7 +103,7 @@ A browser-based VS Code at `http://localhost:7778` — no password, single-user.
 - Full VS Code in the browser with your vault open
 - Foam extension — `[[wikilink]]` navigation, backlinks panel, graph view
 - Integrated terminal running zsh with all brain tools on PATH (`brain-search`, `zk`, `brain-index`, etc.)
-- Claude Code pre-configured in the terminal — connected to Docker Model Runner via the brain MCP server
+- Claude Code pre-configured in the terminal — connects to any Anthropic-compatible provider via your vault's `.env`
 
 **Claude Code in the terminal:**
 
