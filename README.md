@@ -39,17 +39,23 @@ docker run --rm -it \
   kitchencoder/second-brain:latest \
   brain-init
 
-# 3. Start the container (reads config from vault, runs detached)
+# 3a. Start with browser IDE (code-server on http://localhost:7778)
 docker run -d --name second-brain --restart unless-stopped \
   -v ~/Documents/brain:/brain \
   -v second-brain-claude:/home/coder/.claude \
   -v second-brain-code-server:/home/coder/.local/share/code-server \
   -v second-brain-zsh:/home/coder/.zsh-data \
   -p 7778:7778 -p 7779:7779 -p 7780:7780 \
-  kitchencoder/second-brain:latest
-
-# 4. Open the browser UI
+  kitchencoder/second-brain:ui
 open http://localhost:7778
+
+# 3b. Or start lean (MCP + brain tools only, no browser UI — ~600MB smaller)
+docker run -d --name second-brain --restart unless-stopped \
+  -v ~/Documents/brain:/brain \
+  -v second-brain-claude:/home/coder/.claude \
+  -v second-brain-zsh:/home/coder/.zsh-data \
+  -p 7779:7779 -p 7780:7780 \
+  kitchencoder/second-brain:latest
 ```
 
 The wizard lets you pick your model provider and embedding model. It offers presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API. You can re-run it any time:
@@ -105,7 +111,9 @@ No re-indexing required unless the release notes say otherwise.
 
 ## Browser UI (code-server)
 
-The container includes a browser-based VS Code at `http://localhost:7778` — no password, single-user. This is the primary interface when running at a machine where Obsidian can't be installed.
+> Requires the `kitchencoder/second-brain:ui` image — see [Two Images](#two-images).
+
+A browser-based VS Code at `http://localhost:7778` — no password, single-user. This is the primary interface when running at a machine where a local editor can't be installed.
 
 **Features:**
 - Full VS Code in the browser with your vault open

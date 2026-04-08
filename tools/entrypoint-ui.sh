@@ -2,7 +2,8 @@
 # UI image entrypoint: shared setup + brain-api in background + code-server.
 if [ "${1:-}" = "brain-init" ]; then shift; exec brain-init "$@"; fi
 . /usr/local/lib/brain-tools/setup.sh
-if [ "${BRAIN_API_DISABLED:-}" != "1" ]; then
+if [ "${BRAIN_API_DISABLED:-}" != "1" ] && [ -d /brain ]; then
+    mkdir -p /brain/.ai
     brain-api >> /brain/.ai/api.log 2>&1 &
 fi
 exec code-server --bind-addr 0.0.0.0:7778 \
