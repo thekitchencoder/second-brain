@@ -1,12 +1,14 @@
 ARG BASE_IMAGE=kitchencoder/second-brain:latest
 FROM ${BASE_IMAGE}
 
+ARG CODE_SERVER_VERSION=4.114.1
+
 LABEL version="0.6.0"
 
 USER root
 
 # Install code-server via official installer (pre-built release, avoids npm extraction issues)
-RUN curl -fsSL https://code-server.dev/install.sh | sh
+RUN curl -fsSL https://code-server.dev/install.sh | sh -s -- --version ${CODE_SERVER_VERSION}
 
 USER coder
 RUN for ext in \
@@ -15,11 +17,13 @@ RUN for ext in \
         bierner.markdown-preview-github-styles \
         bierner.markdown-mermaid \
         zaaack.markdown-editor; do \
+    installed=false; \
     for i in 1 2 3; do \
-        code-server --install-extension "$ext" && break; \
+        code-server --install-extension "$ext" && installed=true && break; \
         echo "Retry $i for $ext..."; \
         sleep 5; \
     done; \
+    [ "$installed" = "true" ] || { echo "Failed to install $ext after 3 attempts"; exit 1; }; \
     done
 
 COPY --chown=coder:coder code-server/settings.json /home/coder/.local/share/code-server/User/settings.json
