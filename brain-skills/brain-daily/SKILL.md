@@ -5,7 +5,7 @@ description: Use when the user wants to start their day, open today's daily note
 
 # Brain Daily
 
-Create or open today's daily note. Surface yesterday's open items and the current inbox count.
+Create or open today's daily note. Surface yesterday's open items and wikilinks to notes awaiting review.
 
 ## Path Translation
 
@@ -20,31 +20,56 @@ Create or open today's daily note. Surface yesterday's open items and the curren
 
 Today's date: use the current date in `YYYY-MM-DD` format.
 
-**Call `Glob(pattern="Calendar/*YYYY-MM-DD*")` NOW** (substitute the actual date). Do not proceed until you have the result.
+Run `Glob(pattern="Calendar/*YYYY-MM-DD*")` (substitute the actual date).
 
 - **Exists** → Read it, surface its content, skip to step 3
-- **Missing** → **Call `brain_create(template="daily", title="", directory="Calendar/")` NOW.** Note the returned filepath. Do NOT call `brain_write` on this file — go to step 2.
+- **Missing** → Run `brain_create(template="daily", title="", directory="Calendar/")`. Note the returned filepath. Populate using `brain_edit`, not `brain_write` — then go to step 2.
 
 ### 2. Seed today's note
 
-Run all three lookups in parallel NOW — do not skip any:
-
-**a. Yesterday's open items** — **Call `Glob(pattern="Calendar/*<yesterday-date>*")` NOW.** If found, **Call `Grep(pattern="- \\[ \\]|TODO|open:|follow up", path=<yesterday filepath>)` NOW.** Collect any matching lines.
-
-**b. Inbox count** — **Call `Grep(pattern="^status: raw", glob="**/*.md")` NOW.** Count the matching files.
-
-**c. Active efforts** — **Call `brain_query(status="active")` NOW.** Filter the results to `type: effort`. Collect effort titles.
-
-Then populate sections using `brain_edit` — do NOT use `brain_write`:
+Dispatch a subagent with this task:
 
 ```
-brain_edit(op=replace_section, filepath=<filepath>, heading="Carried forward", body="<unresolved items from yesterday, or '<!-- nothing carried forward -->'>"  )
-brain_edit(op=replace_section, filepath=<filepath>, heading="Inbox", body="<!-- <N> raw notes pending triage -->")
+Gather seed data for today's daily note. Run all three lookups, return structured results.
+
+a. Yesterday's open items
+   Yesterday's date: <yesterday-date>
+   Glob(pattern="Calendar/*<yesterday-date>*"). If a file is found, run:
+   Grep(pattern="- \[ \]|TODO|open:|follow up", path=<yesterday filepath>)
+   Return the matching lines as a list, or an empty list if none.
+
+b. Notes awaiting review
+   Run in parallel: brain_query(status="raw") and brain_query(status="unset")
+   Merge and deduplicate. For each path, call brain_read(filepath) to get the title field.
+   Fall back to the filename stem (without extension) if title is absent.
+   Return a list of wikilink strings: ["[[Note Title One]]", "[[Note Title Two]]", ...]
+
+c. Active efforts
+   Run brain_query(status="active"). Filter to type: effort.
+   Return a list of effort titles.
+
+Return:
+{
+  "carried_forward": ["- [ ] item one", ...],   // or empty list
+  "inbox_wikilinks": ["[[Title]]", ...],         // or empty list
+  "active_efforts":  ["Jobs Guarantee", ...]     // or empty list
+}
 ```
 
-If there are active efforts, add them as a brief list under `## Today`:
+Use the subagent's result to populate sections:
+
 ```
-brain_edit(op=replace_section, filepath=<filepath>, heading="Today", body="**Active efforts:**\n<effort list>")
+brain_edit(op=replace_section, filepath=<filepath>, heading="Carried forward",
+  body="<carried_forward lines joined with \n, or '<!-- nothing carried forward -->'>")
+
+brain_edit(op=replace_section, filepath=<filepath>, heading="Inbox",
+  body="<inbox_wikilinks joined with \n, or '<!-- nothing awaiting review -->'>")
+```
+
+If `active_efforts` is non-empty:
+```
+brain_edit(op=replace_section, filepath=<filepath>, heading="Today",
+  body="**Active efforts:**\n<effort titles as bullet list>")
 ```
 
 ### 3. Surface and hand off
@@ -53,7 +78,7 @@ Show the user today's note content and say: "Today's note is at `Calendar/YYYY-M
 
 ## Rules
 
-- **Never create a duplicate.** Check with Glob before creating.
-- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit(op=replace_section)` to populate sections.
-- **Carried forward items are read-only suggestions.** Don't auto-move or delete them from yesterday's note.
-- **Keep the seeded content minimal.** The note is a workspace, not a report.
+- Check with Glob before creating — skip `brain_create` if today's note already exists.
+- Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
+- Carried forward items are read-only suggestions. Don't auto-move or delete them from yesterday's note.
+- Keep the seeded content minimal. The note is a workspace, not a report.

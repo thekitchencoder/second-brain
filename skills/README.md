@@ -39,6 +39,7 @@ These use MCP tools only — no direct filesystem access needed. Work from any p
 | `brain-connect` | "Find connections for this note" | Surfaces related notes via semantic search + keyword search, offers to patch wikilinks |
 | `brain-context` | Working on a named topic or project | Searches the brain for prior context before starting work |
 | `brain-create-effort` | "Create a new effort for X" | Scaffolds a new effort note with goal, intensity state, and optional context primer |
+| `brain-distil` | "Create a context primer from these sources" | Synthesises one or more source notes into a concise context primer for an effort |
 | `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort — groups by status, flags orphans |
 | `brain-project` | "start a new project", "set up a project" | Scaffolds a new effort with context primer — two seed documents |
 | `brain-save` | "remember", "save", "capture", "note down" | Saves something to the brain with correct frontmatter and placement |

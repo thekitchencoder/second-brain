@@ -5,30 +5,111 @@ description: Use when the user mentions a topic, project name, or concept they w
 
 # Brain Context
 
-Before starting work on a topic, search the second-brain to surface what's already been established.
+Before starting work on a topic, surface what's already established. A subagent does the searching and reading; it returns context-primers in full and everything else as a compact summary. Full note content only enters the main conversation on demand.
 
 ## When to Use
 
 Invoke when the user names a project, concept, or topic they want to work on. Do not invoke at every session start — only when there is a concrete subject to search for.
 
-## Steps
+## Flow
 
-1. Run `brain_search(query)` using the topic as the query
-2. If a tag can be inferred from the topic, also run `brain_query(tag=<slug>)`
-3. If step 1 returned a relevant note, take its filepath from the search results and run `brain_related(filepath)` to find connected notes
-4. For any result with `status: current` or `type: context-primer`, call `brain_read(filepath)` to retrieve the full document — search results only show a short excerpt
-5. Surface the full content of key documents; for less relevant hits show the frontmatter summary only
+### 1. Dispatch a context-gathering subagent
 
-## Interpreting Results
+```
+Search the second-brain for context on: <topic>
 
-| `status` value | Meaning |
-|---------------|---------|
+Run in parallel:
+- brain_search(query="<topic>")
+- brain_query(tag="<slug>") if a tag can be inferred from the topic name
+
+For the top result from brain_search, also run brain_related(filepath) to find
+connected notes. Add any new results to the pool.
+
+Deduplicate. For every unique result, call brain_read(filepath) to get the full note.
+
+Classify each result:
+
+  type: context-primer → return full content verbatim (these are small by design)
+
+  everything else → extract:
+    - title
+    - type, status
+    - 2–4 key points from the body (decisions, claims, open questions — not summaries of summaries)
+    - relevance: "high" if directly about the topic or status:current/active;
+                 "medium" if related but indirect;
+                 "low" if tangential (shared tag or keyword only)
+
+Return:
+{
+  "primers": [
+    { "path": "...", "title": "...", "full_content": "..." }
+  ],
+  "notes": [
+    { "path": "...", "title": "...", "type": "...", "status": "...",
+      "relevance": "high|medium|low", "key_points": ["...", "..."] }
+  ],
+  "found": true|false
+}
+
+If nothing is found, return { "found": false }.
+```
+
+### 2. Present results
+
+**If `found` is false:** say "Nothing found for '<topic>' — this appears to be new territory in the brain."
+
+**If primers exist**, present each in full:
+
+```
+## Context Primer — Jobs Guarantee
+[full primer content]
+```
+
+**For notes**, show high and medium relevance; omit low (mention count only):
+
+```
+## Related notes
+
+[effort / active]  Jobs Guarantee  →  Efforts/jobs-guarantee.md
+  • Goal: policy framework for JG as automatic stabiliser
+  • Local government implementation model chosen
+  • Funding mechanism still undecided
+
+[draft]  JG vs UBI inflation  →  Cards/jg-vs-ubi-inflation.md
+  • Compares inflationary pressure of JG vs UBI
+
+3 low-relevance notes not shown.
+```
+
+### 3. Load more as needed
+
+Use judgement — don't wait to be asked if the task makes it obvious what's needed.
+
+**Load proactively** when:
+- The task directly involves a note in the summary (e.g. "update the funding section" → load the effort note)
+- A high-relevance note contains information the current task will clearly require
+- The context-primer mentions a key decision doc or spec that is relevant to the work
+
+**Ask first** when:
+- It is genuinely unclear which notes the task needs
+- Multiple notes look equally relevant and loading all would be excessive
+- A note is medium or low relevance and its value is uncertain
+
+In all cases: call `brain_read(filepath)` for the specific note and surface the content before proceeding with the task.
+
+## Status reference
+
+| `status` | Meaning |
+|----------|---------|
+| `raw` | Just captured — not yet reviewed |
+| `draft` | Work in progress — speculative |
+| `active` | Open effort — currently being worked on |
 | `current` | Established — treat as reliable context |
-| `draft` | Speculative — flag as work in progress |
 | `archived` | Historical — may be superseded |
 
 ## Rules
 
-- If nothing is found, say so explicitly. Do not invent context.
-- Do not re-derive or re-explain concepts that exist in the brain — use what is there.
-- Empty results are not a failure — they mean this topic is new to the brain.
+- Context-primers always load in full — they exist to be read.
+- Everything else is summary-first; full content on request only.
+- Do not re-derive concepts that exist in the brain — use what is there.
+- If nothing is found, say so explicitly. Empty results are not a failure.

@@ -15,7 +15,8 @@ services:
       - .env
     ports:
       - "${BRAIN_API_PORT:-7779}:7779"
-      - "${CODE_SERVER_PORT:-8080}:8080"
+      - "${CODE_SERVER_PORT:-7778}:7778"
+      - "${BRAIN_MCP_PORT:-7780}:7780"
     stdin_open: true
     tty: true
     restart: unless-stopped

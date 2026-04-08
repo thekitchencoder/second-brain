@@ -47,8 +47,8 @@ Which would you like to extract? (numbers, "all", or "none")
 
 For each selected idea:
 
-1. **Call `brain_create(template="discovery", title=<title>, directory="Cards/")` NOW** — or infer a better template/folder from the content. Note the returned filepath.
-2. **Do NOT call `brain_write`.** Populate the note using `brain_edit`:
+1. Run `brain_create(template="discovery", title=<title>, directory="Cards/")` — or infer a better template/folder from the content. Note the returned filepath.
+2. Populate using `brain_edit`, not `brain_write`:
    - `brain_edit(op=replace_section, filepath=<filepath>, heading="Idea", body="<extracted content, verbatim or lightly cleaned>")`
    - If you can infer an effort connection: `brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={effort: "<slug>"})`
    - The discovery template already sets `status: raw` and `captured: <today>` — do not overwrite these.
@@ -76,8 +76,8 @@ Source note updated with wikilinks.
 
 ## Rules
 
-- **Never delete from the source note without asking.** Default is to add wikilinks; replacing text requires explicit confirmation.
+- Always confirm before removing text from the source note — default is to add wikilinks; replacing text requires explicit confirmation.
 - **One idea per note.** Don't bundle two concepts into one extracted note.
 - **Preserve the author's words.** Extract verbatim or lightly clean — don't rewrite.
 - **`status: raw` on extracted notes** — they are captures, not finished notes.
-- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit(op=replace_section)` to populate content.
+- Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.

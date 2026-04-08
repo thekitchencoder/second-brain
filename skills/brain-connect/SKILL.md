@@ -9,7 +9,7 @@ Find semantic and structural connections for a note. Report findings, offer to p
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Flow
 

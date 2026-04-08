@@ -23,6 +23,12 @@ fi
 CLAUDE_DIR=/home/coder/.claude
 SEED_DIR=/usr/local/lib/brain-tools/claude-seed
 mkdir -p "$CLAUDE_DIR"
+# In dev mode, force-resync skills on every restart so edits land without
+# deleting the volume. Other seeded files (settings, .claude.json) are
+# left intact so user config survives restarts.
+if [ "${BRAIN_DEV:-0}" = "1" ]; then
+    rm -rf "$CLAUDE_DIR/skills"
+fi
 # Seed visible files/dirs (settings.json, skills/, agents/, etc.)
 for f in "$SEED_DIR"/*; do
     dest="$CLAUDE_DIR/$(basename "$f")"

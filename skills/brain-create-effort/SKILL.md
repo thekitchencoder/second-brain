@@ -9,7 +9,7 @@ Scaffold a new effort note with correct frontmatter, intensity state, and option
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Flow
 
@@ -23,20 +23,20 @@ Derive a kebab-case slug from the name (e.g. `Jobs Guarantee` → `jobs-guarante
 
 ### 2. Check for duplicates
 
-**Call `brain_search(query=<slug>)` NOW.** Do not skip. If a strong match is returned at `Efforts/<slug>.md`, the effort already exists — surface it and ask: "An effort matching this already exists — do you want to update it instead?"
+Run `brain_search(query=<slug>)` — always check for duplicates before creating. If a strong match is returned at `Efforts/<slug>.md`, the effort already exists — surface it and ask: "An effort matching this already exists — do you want to update it instead?"
 
 Only proceed to step 3 if the search returns no exact match at the expected path.
 
 ### 3. Create the effort note
 
-**Call `brain_create(template="effort", title="<Effort Name>", directory="Efforts/")` NOW.** Note the returned filepath exactly — it will be `Efforts/<slug>.md`.
+Run `brain_create(template="effort", title="<Effort Name>", directory="Efforts/")`. Note the returned filepath exactly — it will be `Efforts/<slug>.md`.
 
-**Do NOT call `brain_write`.** Populate using `brain_edit` only:
+Populate using `brain_edit`, not `brain_write`:
 
 ```
 brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={
   title: "<Effort Name>",
-  intensity: "on",
+  intensity: "focus",
   tags: ["effort", "<slug>"]
 })
 
@@ -53,7 +53,7 @@ brain_edit(op=replace_section, filepath=<filepath>, heading="Active Work", body=
 Ask: "Want a context primer in `Efforts/<slug>/` for background and key decisions?"
 
 If yes:
-1. **Call `brain_create(template="context-primer", title="<Effort Name> — Context", directory="Efforts/<slug>/")` NOW.** Note the filepath.
+1. Run `brain_create(template="context-primer", title="<Effort Name> — Context", directory="Efforts/<slug>/")`. Note the filepath.
 2. Populate with `brain_edit`:
    ```
    brain_edit(op=update_frontmatter, filepath=<primer filepath>, frontmatter={
@@ -79,11 +79,11 @@ Created: Efforts/<slug>.md
 
 ## Rules
 
-- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit`.
-- **Always check for duplicates** — run `brain_search` and check results for an exact path match at `Efforts/<slug>.md`.
-- **`intensity: on`** is always set on creation — this is the default active state.
-- **Effort note at `Efforts/<slug>.md`** — never inside a subfolder.
-- **Context primer at `Efforts/<slug>/`** — always in the subfolder, never at root.
+- Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
+- Always check for duplicates — run `brain_search` and check results for an exact path match at `Efforts/<slug>.md`.
+- `intensity: focus` is always set on creation — this is the default active state.
+- Effort note at `Efforts/<slug>.md` — never inside a subfolder.
+- Context primer at `Efforts/<slug>/` — always in the subfolder, never at root.
 
 ## Baseline Failures This Skill Addresses
 
@@ -100,4 +100,4 @@ Without this skill, agents either:
 | Using `brain-project` for a plain effort | Use this skill — brain-project is for software projects with dev repos |
 | Calling `brain_write` after `brain_create` | Use `brain_edit(op=replace_section)` and `update_frontmatter` |
 | Skipping the duplicate check | Always run `brain_search`; check results for exact path match |
-| Not setting `intensity: on` | Set it in `update_frontmatter` — it won't be in the template yet for existing vaults |
+| Not setting `intensity: focus` | Set it in `update_frontmatter` — it won't be in the template yet for existing vaults |

@@ -9,23 +9,23 @@ Conversational idea capture with inline wiring after the user finishes editing.
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Flow
 
-### 0. Route check — do this FIRST, before anything else
+### 0. Route check
 
-Read the user's request carefully. If it matches any of these patterns, **STOP — do not continue with this skill**:
+Read the user's request carefully. If it matches any of these patterns, switch to the correct skill instead:
 
 | User says | Action |
 |---|---|
-| "note for today", "daily note", "today's log", "start my day", "morning review", "what's on today", "daily log" | Invoke the **brain-daily** skill now. Do not continue here. |
+| "note for today", "daily note", "today's log", "start my day", "morning review", "what's on today", "daily log" | Switch to brain-daily instead. |
 
 Only continue below if the request is clearly NOT a daily note.
 
 ### 1. Search first
 
-**Call `brain_search(query=<topic>)` NOW. Do not proceed to step 2 until you have results.**
+Run `brain_search(query=<topic>)` before anything else.
 
 - **Strong match** → read it, surface it, offer to update rather than duplicate
 - **Weak matches** → note filepaths for the wiring step
@@ -47,13 +47,13 @@ Only ask about type if genuinely ambiguous.
 
 ### 3. Create
 
-**Call `brain_create(template=<template>, title=<title>, directory=<directory>)` NOW.** Note the returned filepath exactly.
+Run `brain_create(template=<template>, title=<title>, directory=<directory>)`. Note the returned filepath exactly.
 
 Infer directory from context:
 - Known effort → `Efforts/<slug>/`
 - Atomic idea or unclear → `Cards/`
 
-**Do NOT call `brain_write` on this file.** Instead, populate it using `brain_edit`:
+Populate using `brain_edit`, not `brain_write` — `brain_write` clobbers template frontmatter.
 
 **a. Update frontmatter fields that differ from template defaults:**
 ```
@@ -80,7 +80,7 @@ Do not proceed until the user signals they are done editing.
 
 After the user confirms done:
 
-1. **Call `brain_search(query=<title>)` and `brain_related(filepath=<filepath>)` in parallel NOW.**
+1. Run in parallel: `brain_search(query=<title>)` and `brain_related(filepath=<filepath>)`.
 2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related Notes")` — idempotent, safe to call without pre-checking
 3. If the note has a non-empty `effort:` field value: verify the effort exists with `brain_search(query=<slug>)`, then `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
 4. Report: "Linked to 3 notes, added reference to `Efforts/jobs-guarantee.md`"
@@ -90,15 +90,15 @@ After the user confirms done:
 - **No folder invention.** Only: Atlas, Efforts, Cards, Calendar, Sources
 - **Search before creating.** Duplicates are worse than updates.
 - **Write only what was captured.** No elaboration, no invented content.
-- **`status: raw` on discovery notes** — never set it to anything else during capture.
+- **`status: raw` on discovery notes** — keep it as set by the template during capture.
 - **One note per idea.**
-- **Never call `brain_write` on a file just created by `brain_create`.** Always use `brain_edit`.
+- Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---|---|
-| Creating without searching first | Always call `brain_search` before `brain_create` |
+| Creating without searching first | Always run `brain_search` before `brain_create` |
 | Calling `brain_write` after `brain_create` | Use `brain_edit(op=replace_section)` to populate content |
 | Placing notes in the brain root | Always pass a `directory` to `brain_create` |
 | Wiring before the user is done | Wait for explicit confirmation before step 5 |

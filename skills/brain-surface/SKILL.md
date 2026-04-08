@@ -9,42 +9,53 @@ Surface efforts with `intensity: simmering` — work that has been set aside but
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Intensity Values
 
 | Value | Meaning |
 |---|---|
-| `on` | Active focus right now |
+| `focus` | Active focus right now |
 | `ongoing` | Background / low-frequency work |
 | `simmering` | Set aside — intent to return |
 
 ## Flow
 
-### 1. Find simmering efforts
+### 1. Find and read simmering efforts (subagent)
 
-**Call `brain_query(status="active")` NOW.** Do not proceed until you have results.
+Dispatch a subagent with this task:
 
-Filter the returned notes to:
-- `type: effort`
-- `intensity: simmering`
+```
+Run brain_query(status="active"). For each result, call brain_read(filepath) to get the
+full note and check its type and intensity fields.
 
-If the query results don't include `intensity` in the excerpt, **call `brain_read(filepath)` for each effort** to check the frontmatter for `intensity: simmering`.
+Filter to notes where:
+  - type: effort
+  - intensity: simmering  (or intensity field missing — flag those separately)
 
-If no results have `intensity` set at all, also surface efforts with `status: active` that haven't been mentioned recently — run an additional `brain_query(status="active")` filtered to `type: effort` and `brain_read` each to check for missing intensity fields.
+For each simmering effort extract:
+  - title
+  - created date
+  - next_step field (if present)
+  - left_off_because field (if present)
+  - First non-empty line under ## Active Work (fallback if no next_step)
 
-### 2. Read each simmering effort
+Sort by created ascending (oldest first — most at risk of being forgotten).
 
-For each match, **call `brain_read(filepath)` NOW** to get the full note. Extract:
-- `title`
-- `created` date
-- `next_step` field (if present)
-- `left_off_because` field (if present)
-- First item under `## Active Work` (if no `next_step` field)
+Return:
+{
+  "simmering": [
+    { "path": "...", "title": "...", "created": "YYYY-MM-DD",
+      "next_step": "...", "left_off_because": "..." },
+    ...
+  ],
+  "missing_intensity": ["Efforts/foo.md", ...]  // active efforts with no intensity field set
+}
+```
 
-### 3. Present ranked list
+### 2. Present ranked list
 
-Sort oldest `created` first — these are most at risk of being forgotten.
+Use the subagent's `simmering` list (already sorted oldest-first):
 
 ```
 You have N simmering efforts (oldest first):
@@ -60,7 +71,9 @@ You have N simmering efforts (oldest first):
 3. ...
 ```
 
-If a note has no `next_step` and no Active Work items, flag it: "(no next step recorded — consider adding one when you resume)"
+If a note has no `next_step`, flag it: "(no next step recorded — consider adding one when you resume)"
+
+If `missing_intensity` is non-empty, mention: "N active efforts have no intensity set — run brain-hygiene to audit."
 
 ### 4. Offer actions
 
@@ -68,7 +81,7 @@ Ask: "Want to resume one of these, or set a next step on one?"
 
 **Resume (set intensity back to active):**
 ```
-brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={intensity: "on"})
+brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={intensity: "focus"})
 ```
 
 **Set a next step:**
@@ -78,7 +91,7 @@ brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={next_step: "
 
 **Mark as done / archive:**
 ```
-brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={status: "archived", intensity: "on"})
+brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={status: "archived"})
 ```
 
 Report what changed.
@@ -103,7 +116,7 @@ brain_edit(op=update_frontmatter, filepath=Efforts/<slug>.md, frontmatter={
 
 - **Read each effort fully** — search results only show excerpts, `next_step` may not be in the excerpt.
 - **Sort oldest first** — longest-parked work is at highest risk of being lost.
-- **Never auto-resume.** Always confirm which effort the user wants to act on.
+- Always confirm which effort the user wants before acting — don't auto-resume.
 - **`next_step` is not required** — flag its absence but don't block on it.
 
 ## Common Mistakes

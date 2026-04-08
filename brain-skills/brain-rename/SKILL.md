@@ -81,6 +81,6 @@ Updated wikilinks in 4 files:
 ## Rules
 
 - **Confirm before renaming.** Always show old path + new path and wait for approval.
-- **Never silently drop display text.** `[[Old|label]]` → `[[New|label]]`, not `[[New]]`.
-- **Check all variants.** Title case, slug form, with and without display text.
+- **Preserve display text aliases.** `[[Old|label]]` → `[[New|label]]`, not `[[New]]`.
+- **Check all wikilink variants** — slug form, title case, with and without aliases.
 - **Update frontmatter title too.** The `title:` field should match the filename.

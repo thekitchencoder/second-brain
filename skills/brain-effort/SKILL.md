@@ -9,7 +9,7 @@ Surface all notes belonging to an effort, grouped by status. Identify gaps and o
 
 ## MCP-Only Skill
 
-This is a global skill — it uses MCP tools exclusively. Do NOT use Glob, Grep, Read, Edit, or other filesystem tools. The vault lives inside a Docker container and filesystem tools will search the wrong directory.
+Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
 
 ## Flow
 
@@ -22,19 +22,40 @@ Accept: effort name, slug, or directory path.
 
 Read the effort note with `brain_read(filepath)`.
 
-### 2. Collect all related notes (three passes, run in parallel)
+### 2. Collect and group related notes (subagent)
 
-**a. Semantic search** — `brain_search(effort name)` — notes elsewhere that discuss this effort
+Dispatch a subagent with this task:
 
-**b. Tag search** — `brain_query(tag=<effort-slug>)` — notes explicitly tagged to this effort. This also catches notes physically in the effort folder since they are typically tagged.
+```
+Collect all notes related to the effort at <filepath> (slug: <slug>).
 
-**c. Backlinks** — `brain_backlinks(Efforts/<slug>.md)` — notes that wikilink to the effort note
+Run these three searches in parallel:
+- brain_search(query="<effort name>") — semantic matches
+- brain_query(tag="<slug>") — notes tagged to this effort
+- brain_backlinks(filepath="Efforts/<slug>.md") — notes wikilinked to the effort note
 
-Deduplicate across all three passes.
+Deduplicate across all three. For each unique result, call brain_read(filepath) to get its
+type, status, and title.
 
-**Note:** Notes physically in `Efforts/<slug>/` but without the tag may be missed. brain-hygiene flags these as orphans during vault audits.
+Return a grouped structure:
+{
+  "current":  [{ "path": "...", "title": "...", "excerpt": "..." }, ...],
+  "draft":    [...],
+  "raw":      [...],
+  "archived": [...],
+  "unknown":  [...]   // status absent or unrecognised
+}
 
-### 3. Group by status
+Also return two additional lists:
+- "orphans": paths found above that are NOT wikilinked from Efforts/<slug>.md
+  (check by reading the effort note and scanning for [[wikilinks]])
+- "stubs": [[wikilinks]] in Efforts/<slug>.md that have no matching note in the vault
+  (check each wikilink target against the results and any brain_search for that title)
+```
+
+### 3. Present grouped overview
+
+Use the subagent's returned structure:
 
 ```
 ## Current (established)
@@ -44,7 +65,7 @@ Deduplicate across all three passes.
 ## Draft (in progress)
   - Efforts/jobs-guarantee/automation-research.md
 
-## Raw (inbox — needs triage)
+## Raw (needs triage)
   - Efforts/jobs-guarantee/automation-idea.md
   - Cards/ubi-comparison.md
 
@@ -74,6 +95,6 @@ After the report, ask:
 
 ## Rules
 
-- **Report only — don't modify without asking.**
+- Report findings first; make changes only when asked.
 - **Missing stubs are not errors** — they're future work, just flag them.
 - **Surface the full effort note** — the user needs to see what's there before deciding what to change.
