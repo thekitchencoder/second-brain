@@ -7,3 +7,7 @@ requires-python = ">=3.11"
 testpaths = ["tests"]
 pythonpath = ["tools"]
 markers = ["integration: requires Docker and a running embedding model (deselect with '-m not integration')"]
+filterwarnings = [
+    "ignore::DeprecationWarning:testcontainers",
+    "ignore:urllib3 v2 only supports OpenSSL:UserWarning",
+]

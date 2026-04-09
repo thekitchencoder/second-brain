@@ -116,7 +116,7 @@ def test_related_returns_distinct_files_not_repeated_chunks(brain_container):
         "from brain_mcp_server import handle_brain_related; "
         "from lib.config import Config; "
         "cfg = Config(); "
-        "filepath = '/brain/Projects/confabulation/context-co-dependent-confabulation.md'; "
+        "filepath = '/brain/Efforts/confabulation/context-co-dependent-confabulation.md'; "
         "print(handle_brain_related(filepath, 5, cfg.db_path, cfg.brain_path))"
         "\""
     )

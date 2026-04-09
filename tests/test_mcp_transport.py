@@ -9,7 +9,6 @@ if "sqlite_vec" not in sys.modules:
 if "openai" not in sys.modules:
     sys.modules["openai"] = MagicMock()
 
-import pytest
 from unittest.mock import patch
 
 

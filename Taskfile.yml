@@ -106,5 +106,21 @@ tasks:
       - echo "Full sync complete."
 
   test:
-    desc: Run unit tests (no Docker needed)
-    cmd: python3 -m pytest -m "not integration"
+    desc: Run unit tests in a container (full coverage including SQLite/sqlite-vec)
+    cmd: >
+      docker run --rm --entrypoint python3
+      -v "{{.ROOT_DIR}}/tests:/usr/local/lib/brain-tools/tests"
+      -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
+      -v "{{.ROOT_DIR}}/pyproject.toml:/usr/local/lib/brain-tools/pyproject.toml"
+      -w /usr/local/lib/brain-tools
+      {{.IMAGE}}
+      -m pytest -m "not integration"
+
+  test-integration:
+    desc: Run integration tests (needs Docker Model Runner with an embedding model)
+    cmd: >
+      python3 -m pytest -m integration -v --ignore=tests/test_brain_api.py
+    env:
+      SECOND_BRAIN_IMAGE: '{{.IMAGE}}'
+      EMBEDDING_BASE_URL: http://model-runner.docker.internal/engines/llama.cpp/v1
+      EMBEDDING_MODEL: '{{.EMBEDDING_MODEL | default "ai/embeddinggemma:latest"}}'
