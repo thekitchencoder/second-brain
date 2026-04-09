@@ -3,7 +3,7 @@
 There are two tiers of skills in the second-brain:
 
 - **Global** (`skills/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only. Installed via the Claude Code plugin.
-- **Vault-level** (`brain-skills/`) — auto-installed by `brain-init` into `<vault>/.claude/skills/`. Load when Claude Code is opened at the vault root. Use MCP for semantic search and direct filesystem tools for file I/O.
+- **Brain-local** (`brain-skills/`) — auto-installed by `brain-init` into `<brain>/.claude/skills/`. Load when Claude Code is opened at the brain root. Use MCP for semantic search and direct filesystem tools for file I/O.
 
 ## Global skills (host install via plugin)
 
@@ -25,12 +25,12 @@ This also registers the brain MCP server — no separate `claude mcp add` needed
 | `brain-effort` | "Where does X effort stand?" | Status overview of all notes in an effort, flags orphans and missing stubs |
 | `brain-project` | "start a new project" | Scaffolds a new effort with context primer |
 | `brain-save` | "remember", "save", "capture" | Saves something to the brain with correct frontmatter and placement |
-| `brain-setup` | "Set up my brain" / first-time vault setup | Guided vault setup flow with pre-flight check and step-by-step instructions |
+| `brain-setup` | "Set up my brain" / first-time brain setup | Guided brain setup flow with pre-flight check and step-by-step instructions |
 | `brain-surface` | "What's simmering?" | Surfaces efforts with `intensity: simmering`, shows saved next steps, offers to resume |
 | `brain-triage` | "Process my inbox" | Works through `status: raw` notes one at a time — promote, archive, or defer |
 | `brain-distil` | "Distil my research into a primer" | Synthesises one or more source notes into a concise context primer for an effort |
 
-## Vault-level skills (auto-installed)
+## Brain-local skills (auto-installed)
 
 These are installed automatically when the container starts or when you run `brain-init`. No manual setup needed.
 
@@ -39,7 +39,7 @@ These are installed automatically when the container starts or when you run `bra
 | `brain-daily` | "Start my day" | Creates today's daily note, carries forward open items, shows inbox count |
 | `brain-extract` | "Pull the ideas out of this note" | Extracts atomic ideas from a long note into separate Cards with wikilinks back |
 | `brain-hygiene` | "tidy", "audit", "health-check" | Checks frontmatter, orphaned notes, broken wikilinks, stale drafts |
-| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the vault |
+| `brain-rename` | "Rename this note" | Renames a file and updates every `[[wikilink]]` pointing to it across the brain |
 | `brain-reorganise` | "Move X into effort Y" | Moves/consolidates notes into an effort via `brain-rename` to preserve all wikilinks |
 
 ## Claude Desktop / claude.ai

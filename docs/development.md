@@ -6,7 +6,7 @@ This guide is for developers who want to modify the second-brain, add new skills
 
 - `tools/lib/`: Python library for brain tools (indexing, search, MCP logic).
 - `skills/`: Global Claude Code skills (MCP-only).
-- `brain-skills/`: Vault-level Claude Code skills (filesystem access).
+- `brain-skills/`: Brain-local Claude Code skills (filesystem access).
 - `zk/templates/`: Note templates used by `zk`.
 - `claude/`: MCP server entrypoint and configuration.
 - `code-server/`: Browser IDE configuration.
