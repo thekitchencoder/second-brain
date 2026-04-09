@@ -9,7 +9,7 @@ Scaffold a new effort note with correct frontmatter, intensity state, and option
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Flow
 
@@ -19,7 +19,7 @@ If the user hasn't provided them, ask:
 - Effort name (human-readable title)
 - One-line goal statement
 
-Derive a kebab-case slug from the name (e.g. `Co-dependent Confabulation` → `co-dependent-confabulation`).
+Derive a kebab-case slug from the name (e.g. `Renewable Energy` → `renewable-energy`).
 
 ### 2. Check for duplicates
 

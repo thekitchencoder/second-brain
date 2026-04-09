@@ -5,9 +5,9 @@ description: Use when asked to tidy, audit, or health-check the second-brain —
 
 # Brain Hygiene
 
-Systematic audit of the second-brain. Dispatch five parallel subagents to scan the vault; interpret findings and handle repairs in the main conversation.
+Systematic audit of the second-brain. Dispatch five parallel subagents to scan the brain; interpret findings and handle repairs in the main conversation.
 
-This skill runs in the vault root with full filesystem access (Glob, Grep, Read, Edit). Use MCP tools for semantic operations, filesystem tools for structural scans and repairs.
+This skill runs in the brain root with full filesystem access (Glob, Grep, Read, Edit). Use MCP tools for semantic operations, filesystem tools for structural scans and repairs.
 
 ## Schema Reference
 
@@ -60,7 +60,7 @@ Each subagent scans and returns a structured report. No repairs — findings onl
 **Subagent 1 — Frontmatter audit**
 
 ```
-Walk every .md file under the vault root using Glob(pattern="**/*.md"). Skip any path containing ".trash/".
+Walk every .md file under the brain root using Glob(pattern="**/*.md"). Skip any path containing ".trash/".
 For each file, Read it and parse the YAML frontmatter block (between the --- delimiters).
 Check for the following and record any violations found:
 

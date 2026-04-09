@@ -9,7 +9,7 @@ Surface efforts with `intensity: simmering` — work that has been set aside but
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Intensity Values
 
@@ -60,7 +60,7 @@ Use the subagent's `simmering` list (already sorted oldest-first):
 ```
 You have N simmering efforts (oldest first):
 
-1. Co-dependent Confabulation  [Efforts/co-dependent-confabulation.md]
+1. Renewable Energy  [Efforts/renewable-energy.md]
    Set aside: 2026-01-15
    Next step: "Draft the funding model section"
 

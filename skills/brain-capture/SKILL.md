@@ -9,7 +9,7 @@ Conversational idea capture with inline wiring after the user finishes editing.
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Flow
 
@@ -83,7 +83,7 @@ After the user confirms done:
 1. Run in parallel: `brain_search(query=<title>)` and `brain_related(filepath=<filepath>)`.
 2. For each strong match: `brain_edit(op=insert_wikilink, filepath=<new note>, target=<match title>, context_heading="Related Notes")` — idempotent, safe to call without pre-checking
 3. If the note has a non-empty `effort:` field value: verify the effort exists with `brain_search(query=<slug>)`, then `brain_edit(op=insert_wikilink, filepath=Efforts/<slug>.md, target=<note title>, context_heading="Notes")`
-4. Report: "Linked to 3 notes, added reference to `Efforts/co-dependent-confabulation.md`"
+4. Report: "Linked to 3 notes, added reference to `Efforts/renewable-energy.md`"
 
 ## Rules
 

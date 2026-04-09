@@ -5,18 +5,18 @@ description: Use when the user wants to move notes into an effort, consolidate s
 
 # Brain Reorganise
 
-Move or consolidate notes into an effort. Delegates all per-file moves to `brain-rename` to preserve wikilink integrity across the vault.
+Move or consolidate notes into an effort. Delegates all per-file moves to `brain-rename` to preserve wikilink integrity across the brain.
 
 ## Path Translation
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
+`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return brain-relative paths like `Cards/foo.md`.
 
 - **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
 - **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
 
 ## Why brain-rename is required for every move
 
-write+delete silently breaks all `[[wikilinks]]` pointing to the moved file across the vault. Every file move goes through `brain-rename`, which finds and updates wikilinks automatically before renaming.
+write+delete silently breaks all `[[wikilinks]]` pointing to the moved file across the brain. Every file move goes through `brain-rename`, which finds and updates wikilinks automatically before renaming.
 
 ## Flow
 
@@ -59,7 +59,7 @@ For each note, invoke the `brain-rename` skill with:
 
 `brain-rename` will:
 - Find all `[[wikilink]]` variants pointing to the old path
-- Update them in every file across the vault
+- Update them in every file across the brain
 - Rename/move the file itself
 - Update the note's own `title:` frontmatter if changed
 

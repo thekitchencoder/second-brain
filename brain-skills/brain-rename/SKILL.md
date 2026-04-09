@@ -1,15 +1,15 @@
 ---
 name: brain-rename
-description: Use when the user wants to rename a note or file in the vault. Triggers on "rename", "move this note", "change the title of". Updates all wikilinks across the vault automatically.
+description: Use when the user wants to rename a note or file in the brain. Triggers on "rename", "move this note", "change the title of". Updates all wikilinks across the brain automatically.
 ---
 
 # Brain Rename
 
-Rename a note and update every `[[wikilink]]` pointing to it across the vault.
+Rename a note and update every `[[wikilink]]` pointing to it across the brain.
 
 ## Path Translation
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
+`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return brain-relative paths like `Cards/foo.md`.
 
 - **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
 - **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
@@ -51,11 +51,11 @@ Report files updated as you go.
 
 Choose the approach based on your session context:
 
-**Brain-native session** (Claude Code opened directly in the vault root — direct filesystem access available):
+**Brain-native session** (Claude Code opened directly in the brain root — direct filesystem access available):
 ```bash
 mv <old-path> <new-path>
 ```
-Use the vault filesystem path (strip the `/brain` prefix if the path came from an MCP tool).
+Use the brain filesystem path (strip the `/brain` prefix if the path came from an MCP tool).
 
 **MCP-only session** (external project with brain connected as MCP — no direct filesystem access):
 ```
@@ -73,7 +73,7 @@ brain_trash(old_path)           → remove old file and clean from index
 ```
 Renamed: Cards/old-title.md → Cards/new-title.md
 Updated wikilinks in 4 files:
-  Efforts/co-dependent-confabulation.md
+  Efforts/renewable-energy.md
   Cards/related-idea.md
   ...
 ```

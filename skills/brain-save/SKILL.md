@@ -9,7 +9,7 @@ Save something to the second-brain with correct frontmatter and placement.
 
 ## Path Notes
 
-The vault lives inside a Docker container — use MCP tools to inspect vault paths. Filesystem tools (Glob, Read, etc.) will search the host, not the vault. When MCP tools return absolute paths like `/brain/Cards/foo.md`, pass them directly back to other MCP tools unchanged.
+The brain lives inside a Docker container — use MCP tools to inspect brain paths. Filesystem tools (Glob, Read, etc.) will search the host, not the brain. When MCP tools return absolute paths like `/brain/Cards/foo.md`, pass them directly back to other MCP tools unchanged.
 
 ## Steps
 
@@ -19,7 +19,7 @@ The vault lives inside a Docker container — use MCP tools to inspect vault pat
 
 3. Agree the location with the user if ambiguous.
 
-4. Run `brain_templates()` to see what templates are available. If no templates are returned, ask the user to run `brain-init` to set up the vault, then stop. Otherwise call `brain_create(template=<template>, title=<title>, directory=<directory>)` — pass the target subdirectory so the file is created in the right place, not the brain root. If unsure which template fits, ask the user. Note the returned filepath exactly.
+4. Run `brain_templates()` to see what templates are available. If no templates are returned, ask the user to run `brain-init` to set up the brain, then stop. Otherwise call `brain_create(template=<template>, title=<title>, directory=<directory>)` — pass the target subdirectory so the file is created in the right place, not the brain root. If unsure which template fits, ask the user. Note the returned filepath exactly.
 
 5. Run `brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={...})` to set any frontmatter fields that differ from the template defaults:
 

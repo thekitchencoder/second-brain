@@ -9,7 +9,7 @@ Find semantic and structural connections for a note. Report findings, offer to p
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Flow
 
@@ -37,10 +37,10 @@ Group by match strength:
 
 ```
 Already links here (backlinks):
-  Efforts/co-dependent-confabulation.md — wikilinks to this note
+  Efforts/renewable-energy.md — wikilinks to this note
 
 Strong match (semantic + keyword overlap):
-  Efforts/co-dependent-confabulation/automation-proposal.md
+  Efforts/renewable-energy/automation-proposal.md
   "automation and labour market reform..."
 
 Weaker match (keyword only):

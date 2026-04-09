@@ -61,7 +61,7 @@ If nothing is found, return { "found": false }.
 **If primers exist**, present each in full:
 
 ```
-## Context Primer — Co-dependent Confabulation
+## Context Primer — Renewable Energy
 [full primer content]
 ```
 
@@ -70,13 +70,13 @@ If nothing is found, return { "found": false }.
 ```
 ## Related notes
 
-[effort / active]  Co-dependent Confabulation  →  Efforts/co-dependent-confabulation.md
-  • Goal: policy framework for CC as automatic stabiliser
+[effort / active]  Renewable Energy  →  Efforts/renewable-energy.md
+  • Goal: policy framework for RE as automatic stabiliser
   • Local government implementation model chosen
   • Funding mechanism still undecided
 
-[draft]  CC vs UBI inflation  →  Cards/cc-vs-ubi-inflation.md
-  • Compares inflationary pressure of CC vs UBI
+[draft]  RE vs UBI inflation  →  Cards/re-vs-ubi-inflation.md
+  • Compares inflationary pressure of RE vs UBI
 
 3 low-relevance notes not shown.
 ```
