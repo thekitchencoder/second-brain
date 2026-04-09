@@ -9,14 +9,14 @@ Synthesise one or more source notes into a context primer for an effort. The pri
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Flow
 
 ### 1. Identify the sources
 
 Accept any mix of:
-- Explicit paths (`Efforts/co-dependent-confabulation/research.md`)
+- Explicit paths (`Efforts/renewable-energy/research.md`)
 - Titles → resolve via `brain_search(title)`
 - A search query → run `brain_search(query)`, confirm which results to include
 

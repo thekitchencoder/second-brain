@@ -9,7 +9,7 @@ Surface all notes belonging to an effort, grouped by status. Identify gaps and o
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Flow
 
@@ -49,7 +49,7 @@ Return a grouped structure:
 Also return two additional lists:
 - "orphans": paths found above that are NOT wikilinked from Efforts/<slug>.md
   (check by reading the effort note and scanning for [[wikilinks]])
-- "stubs": [[wikilinks]] in Efforts/<slug>.md that have no matching note in the vault
+- "stubs": [[wikilinks]] in Efforts/<slug>.md that have no matching note in the brain
   (check each wikilink target against the results and any brain_search for that title)
 ```
 
@@ -59,18 +59,18 @@ Use the subagent's returned structure:
 
 ```
 ## Current (established)
-  - Efforts/co-dependent-confabulation/context-primer.md
-    "Background and goals for the Co-dependent Confabulation effort"
+  - Efforts/renewable-energy/context-primer.md
+    "Background and goals for the Renewable Energy effort"
 
 ## Draft (in progress)
-  - Efforts/co-dependent-confabulation/automation-research.md
+  - Efforts/renewable-energy/automation-research.md
 
 ## Raw (needs triage)
-  - Efforts/co-dependent-confabulation/automation-idea.md
+  - Efforts/renewable-energy/automation-idea.md
   - Cards/ubi-comparison.md
 
 ## Archived
-  - Efforts/co-dependent-confabulation/old-scope.md
+  - Efforts/renewable-energy/old-scope.md
 ```
 
 ### 4. Identify gaps and orphans
@@ -78,7 +78,7 @@ Use the subagent's returned structure:
 **Orphans** — notes found in steps 2–3 that are not wikilinked from `Efforts/<slug>.md`:
 ```
 Not linked from effort note:
-  Cards/ubi-comparison.md — tagged co-dependent-confabulation but not linked from effort
+  Cards/ubi-comparison.md — tagged renewable-energy but not linked from effort
 ```
 
 **Missing links** — wikilinks in `Efforts/<slug>.md` that point to notes that don't exist yet (stubs):

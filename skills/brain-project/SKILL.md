@@ -9,7 +9,7 @@ Scaffold a new effort in the second-brain with two seed documents.
 
 ## Path Notes
 
-The vault lives inside a Docker container — use MCP tools to inspect vault paths. Filesystem tools (Glob, Read, etc.) will search the host, not the vault. When MCP tools return absolute paths like `/brain/Efforts/foo.md`, pass them directly back to other MCP tools unchanged.
+The brain lives inside a Docker container — use MCP tools to inspect brain paths. Filesystem tools (Glob, Read, etc.) will search the host, not the brain. When MCP tools return absolute paths like `/brain/Efforts/foo.md`, pass them directly back to other MCP tools unchanged.
 
 ## Steps
 

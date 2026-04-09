@@ -9,7 +9,7 @@ Create or open today's daily note. Surface yesterday's open items and wikilinks 
 
 ## Path Translation
 
-`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return vault-relative paths like `Cards/foo.md`.
+`brain_search`, `brain_create`, and `brain_related` return absolute paths like `/brain/Cards/foo.md`. `brain_query` and `brain_backlinks` return brain-relative paths like `Cards/foo.md`.
 
 - **Filesystem tools** (Glob, Grep, Read): strip `/brain/` prefix → `Cards/foo.md`
 - **MCP tools** (brain_read, brain_edit, etc.): pass the path as returned — both formats accepted
@@ -52,7 +52,7 @@ Return:
 {
   "carried_forward": ["- [ ] item one", ...],   // or empty list
   "inbox_wikilinks": ["[[Title]]", ...],         // or empty list
-  "active_efforts":  ["Co-dependent Confabulation", ...]     // or empty list
+  "active_efforts":  ["Renewable Energy", ...]     // or empty list
 }
 ```
 

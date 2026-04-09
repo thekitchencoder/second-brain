@@ -1,15 +1,15 @@
 ---
 name: brain-setup
-description: Use when the user wants to set up their brain vault for the first time, or says "set up my brain", "initialise my vault", "help me get started". Guides a structured onboarding session to create the first effort, context-primer, and initial notes.
+description: Use when the user wants to set up their brain for the first time, or says "set up my brain", "initialise my brain", "help me get started". Guides a structured onboarding session to create the first effort, context-primer, and initial notes.
 ---
 
 # Brain Setup
 
-Guided first-time vault setup. Ask the right questions, then use MCP tools to build the initial structure.
+Guided first-time brain setup. Ask the right questions, then use MCP tools to build the initial structure.
 
 ## MCP-Only Skill
 
-Uses MCP tools only. The vault lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the vault.
+Uses MCP tools only. The brain lives inside a Docker container — filesystem tools (Glob, Grep, Read, Edit) will search the host filesystem, not the brain.
 
 ## Pre-flight check
 
@@ -17,9 +17,9 @@ Call `brain_templates` first. If it errors, stop and tell the user:
 
 > "It looks like `brain-init` hasn't been run yet. Please run it inside the container first, then come back."
 
-## Vault structure
+## Brain structure
 
-The vault uses an ACE-aligned hierarchy. `brain-init` creates these folders — do not recreate them. If any are missing, use `brain_write` to create a placeholder `.keep` file.
+The brain uses an ACE-aligned hierarchy. `brain-init` creates these folders — do not recreate them. If any are missing, use `brain_write` to create a placeholder `.keep` file.
 
 | Folder | Purpose |
 |---|---|
