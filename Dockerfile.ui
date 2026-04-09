@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE}
 
 ARG CODE_SERVER_VERSION=4.114.1
 
-LABEL version="1.0.1"
+LABEL version="1.0.2"
 
 USER root
 
