@@ -73,7 +73,7 @@ brain_trash(old_path)           → remove old file and clean from index
 ```
 Renamed: Cards/old-title.md → Cards/new-title.md
 Updated wikilinks in 4 files:
-  Efforts/jobs-guarantee.md
+  Efforts/co-dependent-confabulation.md
   Cards/related-idea.md
   ...
 ```

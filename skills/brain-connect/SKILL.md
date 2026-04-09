@@ -37,10 +37,10 @@ Group by match strength:
 
 ```
 Already links here (backlinks):
-  Efforts/jobs-guarantee.md — wikilinks to this note
+  Efforts/co-dependent-confabulation.md — wikilinks to this note
 
 Strong match (semantic + keyword overlap):
-  Efforts/jobs-guarantee/automation-proposal.md
+  Efforts/co-dependent-confabulation/automation-proposal.md
   "automation and labour market reform..."
 
 Weaker match (keyword only):

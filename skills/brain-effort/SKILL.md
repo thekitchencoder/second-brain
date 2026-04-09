@@ -59,18 +59,18 @@ Use the subagent's returned structure:
 
 ```
 ## Current (established)
-  - Efforts/jobs-guarantee/context-primer.md
-    "Background and goals for the Jobs Guarantee effort"
+  - Efforts/co-dependent-confabulation/context-primer.md
+    "Background and goals for the Co-dependent Confabulation effort"
 
 ## Draft (in progress)
-  - Efforts/jobs-guarantee/automation-research.md
+  - Efforts/co-dependent-confabulation/automation-research.md
 
 ## Raw (needs triage)
-  - Efforts/jobs-guarantee/automation-idea.md
+  - Efforts/co-dependent-confabulation/automation-idea.md
   - Cards/ubi-comparison.md
 
 ## Archived
-  - Efforts/jobs-guarantee/old-scope.md
+  - Efforts/co-dependent-confabulation/old-scope.md
 ```
 
 ### 4. Identify gaps and orphans
@@ -78,7 +78,7 @@ Use the subagent's returned structure:
 **Orphans** — notes found in steps 2–3 that are not wikilinked from `Efforts/<slug>.md`:
 ```
 Not linked from effort note:
-  Cards/ubi-comparison.md — tagged jobs-guarantee but not linked from effort
+  Cards/ubi-comparison.md — tagged co-dependent-confabulation but not linked from effort
 ```
 
 **Missing links** — wikilinks in `Efforts/<slug>.md` that point to notes that don't exist yet (stubs):
