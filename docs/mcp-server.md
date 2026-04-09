@@ -9,10 +9,10 @@ Both transports share the same tools and handler logic. When you set `BRAIN_MCP_
 
 ## Enabling HTTP transport
 
-`brain-init` sets `BRAIN_MCP_TRANSPORT=http` in your vault's `.env` by default, and the Quick Start commands expose port 7780. To verify:
+`brain-init` sets `BRAIN_MCP_TRANSPORT=http` in your brain's `.env` by default, and the Quick Start commands expose port 7780. To verify:
 
 ```bash
-# Check vault .env
+# Check brain .env
 grep BRAIN_MCP_TRANSPORT ~/Documents/brain/.env
 
 # If missing, add it and restart
@@ -162,7 +162,7 @@ registry:
         properties:
           brain_path:
             type: "string"
-            description: "Path to your vault on the host"
+            description: "Path to your brain on the host"
         required: ["brain_path"]
 ```
 

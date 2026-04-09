@@ -33,7 +33,7 @@ docker rm -f second-brain
 # Re-run your docker run command
 ```
 
-Your vault data, Claude config, and shell history are preserved in named volumes. To update templates and skills inside an existing vault, run `brain-init` again — it will update staged host skills and leave existing config untouched.
+Your brain data, Claude config, and shell history are preserved in named volumes. To update templates and skills inside an existing brain, run `brain-init` again — it will update staged host skills and leave existing config untouched.
 
 No re-indexing required unless the release notes say otherwise.
 
@@ -44,10 +44,10 @@ No re-indexing required unless the release notes say otherwise.
 A browser-based VS Code at `http://localhost:7778` — no password, single-user. This is the primary interface when running at a machine where a local editor can't be installed.
 
 **Features:**
-- Full VS Code in the browser with your vault open
+- Full VS Code in the browser with your brain open
 - Foam extension — `[[wikilink]]` navigation, backlinks panel, graph view
 - Integrated terminal running zsh with all brain tools on PATH (`brain-search`, `zk`, `brain-index`, etc.)
-- Claude Code pre-configured in the terminal — connects to any Anthropic-compatible provider via your vault's `.env`
+- Claude Code pre-configured in the terminal — connects to any Anthropic-compatible provider via your brain's `.env`
 
 **Claude Code in the terminal:**
 
@@ -104,9 +104,9 @@ After adding: `source ~/.zshrc`
 
 ## VS Code (Host)
 
-Open your brain vault folder in VS Code to get wiki-link navigation and markdown preview.
+Open your brain folder in VS Code to get wiki-link navigation and markdown preview.
 
-`brain-init` creates a `.vscode/` directory in the vault with recommended extensions and settings. VS Code will prompt to install them (Foam, Markdown All in One, Paste Image) — accept the prompt or run `Extensions: Show Recommended Extensions` from the command palette.
+`brain-init` creates a `.vscode/` directory in the brain with recommended extensions and settings. VS Code will prompt to install them (Foam, Markdown All in One, Paste Image) — accept the prompt or run `Extensions: Show Recommended Extensions` from the command palette.
 
 **Usage:**
 - **Follow wiki-links:** Ctrl+click (Cmd+click on Mac) any `[[wiki-link]]` to navigate to that note
@@ -134,7 +134,7 @@ drafts
 preview
 
 # Semantic search (alias: search)
-search "co-dependent confabulation"
+search "renewable energy"
 search "embedding models" --limit 10
 brain-search "query" --json
 
@@ -188,7 +188,7 @@ brain-template-sync zk-to-obsidian
 
 | Variable | Default | Description |
 |---|---|---|
-| `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host — written to vault `.env` by `brain-init`, used by skills when generating `docker run` commands |
+| `BRAIN_HOST_PATH` | `~/Documents/brain` | Path to your notes directory on the host — written to brain `.env` by `brain-init`, used by skills when generating `docker run` commands |
 | `EMBEDDING_BASE_URL` | Docker Model Runner | OpenAI-compatible embedding endpoint |
 | `EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model name — dimension auto-detected at index time |
 | `OPENAI_API_KEY` | `local` | API key (any non-empty string for local endpoints) |
@@ -204,13 +204,13 @@ brain-template-sync zk-to-obsidian
 
 ### Choosing an embedding model
 
-The embedding model affects semantic search quality, indexing speed, and database size. `brain-init` defaults to `mxbai-embed-large` but you can choose a different model during setup or by editing `EMBEDDING_MODEL` in your vault's `.env`.
+The embedding model affects semantic search quality, indexing speed, and database size. `brain-init` defaults to `mxbai-embed-large` but you can choose a different model during setup or by editing `EMBEDDING_MODEL` in your brain's `.env`.
 
 | Model | Dimensions | Best for | Trade-offs |
 |---|---|---|---|
 | `mxbai-embed-large` | 1024 | General-purpose notes, mixed content | Good balance of quality and speed |
 | `nomic-embed-text` | 768 | Token-dense technical content (code, specs, architecture docs) | Higher quality on technical text, larger index |
-| `all-minilm` | 384 | Large vaults where speed matters | Fastest and smallest index, lower retrieval quality |
+| `all-minilm` | 384 | Large brains where speed matters | Fastest and smallest index, lower retrieval quality |
 
 **Changing models requires re-indexing** — the embedding dimensions are stored in `embeddings.db`. After changing `EMBEDDING_MODEL`, delete `.ai/embeddings.db` and run `brain-index run`.
 

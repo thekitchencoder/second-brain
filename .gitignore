@@ -1,4 +1,6 @@
 .DS_Store
+.claude/
+.junie/
 .venv/
 .env
 __pycache__/
@@ -11,3 +13,4 @@ skills/*.zip
 .worktrees/
 tests/fixtures/vault/.ai/
 tests/fixtures/vault/.zk/notebook.db
+docs/plans

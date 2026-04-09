@@ -2,14 +2,14 @@
 
 Docker container for brain management: zk, semantic search, and Model Context Protocol (MCP) server for Claude Code and Claude Desktop.
 
-The second-brain provides a set of tools and skills to manage a vault of markdown notes using semantic search, structured metadata, and AI capabilities.
+The second-brain provides a set of tools and skills to manage a brain of markdown notes using semantic search, structured metadata, and AI capabilities.
 
 ## Quick start
 
 No repository clone is required to run the second-brain — the Docker image includes everything needed.
 
 ```bash
-# 1. Create a directory for your vault (or use an existing notes folder)
+# 1. Create a directory for your brain (or use an existing notes folder)
 mkdir -p ~/Documents/brain
 
 # 2. Run the setup wizard (choose model provider, create folders, generate .env)
@@ -33,7 +33,7 @@ The `brain-init` wizard will guide you through picking your model provider and e
 
 ### For Users
 - [User Guide](docs/user-guide.md): Installation, Browser UI, Host configuration, and how to use the brain.
-- [Vault Guide](docs/vault-guide.md): Philosophy and structure of the brain vault (folders, frontmatter, tags).
+- [Brain Guide](docs/brain-guide.md): Philosophy and structure of your brain (folders, frontmatter, tags).
 - [MCP Server](docs/mcp-server.md): How to connect your brain to AI clients (Claude Code, Claude Desktop, Open WebUI, etc).
 - [Brain Skills](docs/skills.md): Detailed list of all AI skills available for managing your brain.
 

@@ -1,10 +1,10 @@
-# The brain vault
+# Your brain
 
-This guide covers how the vault is organized, what the frontmatter fields do, and how the pieces connect. The quick version: notes go in folders by kind, YAML frontmatter makes them searchable, and skills use both to surface what matters.
+This guide covers how the brain is organized, what the frontmatter fields do, and how the pieces connect. The quick version: notes go in folders by kind, YAML frontmatter makes them searchable, and skills use both to surface what matters.
 
 ## Philosophy
 
-The vault is a place to think, not a filing system. You throw things in, tag them loosely, and let the tooling find connections later.
+Your brain is a place to think, not a filing system. You throw things in, tag them loosely, and let the tooling find connections later.
 
 **Capture first, organize later.** Ideas are fragile. The system makes it cheap to grab one before it disappears. You decide what it means during triage, not at capture time.
 
@@ -18,7 +18,7 @@ Semantic search (by meaning, not just keywords) and frontmatter metadata make th
 
 ---
 
-## Vault structure
+## Brain structure
 
 The top-level folders are loosely inspired by ACE (Atlas, Calendar, Efforts). It's not a strict implementation — the idea is just that different kinds of thinking belong in different places.
 
@@ -28,9 +28,9 @@ Reference material, stable knowledge, reusable frameworks. Design patterns, glos
 
 ### Efforts
 
-Active areas of focus. Each effort gets its own folder with a kebab-case slug: `Efforts/co-dependent-confabulation/`, `Efforts/eink-display/`.
+Active areas of focus. Each effort gets its own folder with a kebab-case slug: `Efforts/renewable-energy/`, `Efforts/eink-display/`.
 
-The effort note itself (`Efforts/co-dependent-confabulation.md`) is the hub — goal, links to related work, intensity, status. Subfolders hold supporting material: meeting notes, research, specs, context primers.
+The effort note itself (`Efforts/renewable-energy.md`) is the hub — goal, links to related work, intensity, status. Subfolders hold supporting material: meeting notes, research, specs, context primers.
 
 Efforts have a lifecycle. They start with a goal, accumulate work, sometimes pause, and eventually complete or get archived.
 
@@ -73,9 +73,9 @@ It tracks what the note is (type), where it stands (status, intensity), what it 
 | `intensity` | Effort focus level | `focus` (active), `ongoing` (background), `simmering` (parked) |
 | `created` | Creation date | `2026-04-08` |
 | `date` | For daily/dated notes | `2026-04-08` |
-| `tags` | Searchable labels | `["effort", "co-dependent-confabulation", "economic-policy"]` |
+| `tags` | Searchable labels | `["effort", "renewable-energy", "economic-policy"]` |
 | `title` | Note title (used in search) | Any string |
-| `effort` | Parent effort for non-effort notes | `co-dependent-confabulation` or `""` |
+| `effort` | Parent effort for non-effort notes | `renewable-energy` or `""` |
 | `captured` | When a discovery was captured | `2026-04-08` |
 | `device` | Where a discovery came from | `phone`, `voice`, `laptop` |
 
@@ -213,18 +213,18 @@ When you're done with an effort, set `status: archived`.
 
 ## Tags
 
-Every note has a `tags` field. Tags let you query things like "all notes tagged `economic-policy`" or "everything in the `co-dependent-confabulation` effort."
+Every note has a `tags` field. Tags let you query things like "all notes tagged `economic-policy`" or "everything in the `renewable-energy` effort."
 
 ### Conventions
 
 | Pattern | What it's for | Example |
 |---------|---------------|---------|
 | Type markers | Added by templates automatically | `effort`, `context`, `meeting`, `discovery` |
-| Effort slugs | All notes in an effort share the slug | `co-dependent-confabulation` |
+| Effort slugs | All notes in an effort share the slug | `renewable-energy` |
 | Domain tags | Group related ideas across efforts | `epistemic-lens`, `technical`, `research` |
 | Reserved | System use | `daily`, `adr` |
 
-You don't need to tag everything. If a note belongs to an effort, tag it with the effort's slug so `brain_query(tag="co-dependent-confabulation")` finds it. Type tags are added by templates already.
+You don't need to tag everything. If a note belongs to an effort, tag it with the effort's slug so `brain_query(tag="renewable-energy")` finds it. Type tags are added by templates already.
 
 ---
 
@@ -242,30 +242,30 @@ Cmd+click navigates in VS Code (via Foam). The system tracks backlinks — which
 - `[[Note Title|Display Text]]` — alias for display
 - `[[filename]]` — works too, title is cleaner
 
-The system uses backlinks for effort management. When you ask "what's the status of the co-dependent-confabulation effort?", it reads the effort note's wikilinks and builds a status overview from everything linked.
+The system uses backlinks for effort management. When you ask "what's the status of the renewable-energy effort?", it reads the effort note's wikilinks and builds a status overview from everything linked.
 
 ---
 
 ## A worked example
 
-Say you're starting research on a co-dependent confabulation policy.
+Say you're starting research on a renewable energy policy.
 
-**1. Create the effort.** Run brain-create-effort. It creates `Efforts/co-dependent-confabulation.md`:
+**1. Create the effort.** Run brain-create-effort. It creates `Efforts/renewable-energy.md`:
 
 ```markdown
 ---
 type: effort
-title: "Co-dependent Confabulation"
+title: "Renewable Energy"
 status: active
 intensity: focus
 created: 2026-04-08
-tags: [effort, co-dependent-confabulation]
+tags: [effort, renewable-energy]
 ---
 
-# Co-dependent Confabulation
+# Renewable Energy
 
 ## Goal
-Research and model a universal co-dependent confabulation policy.
+Research renewable energy adoption strategies for urban areas.
 
 ## Active Work
 
@@ -279,36 +279,36 @@ Research and model a universal co-dependent confabulation policy.
 ```markdown
 ---
 type: discovery
-title: "Co-dependent Confabulation Implementations Review"
+title: "Renewable Energy Implementations Review"
 status: raw
 captured: 2026-04-08
-effort: co-dependent-confabulation
-tags: [discovery, co-dependent-confabulation]
+effort: renewable-energy
+tags: [discovery, renewable-energy]
 ---
 
 ## Idea
-Australia's co-dependent confabulation experiment (2015-2020) showed employment gains of 8-12% in treated regions...
+Denmark's renewable energy transition (2015-2020) showed grid reliability improvements of 8-12% in target regions...
 
 ## Why it matters
 Implementation data beats theory. This gives us a testable model.
 ```
 
-The `effort: co-dependent-confabulation` field and tag link it to the effort.
+The `effort: renewable-energy` field and tag link it to the effort.
 
 **3. Triage.** When you're ready to process your inbox, run brain-triage:
 
 ```
 You have 3 notes awaiting review. Working through them oldest first.
 
-[1/3] Co-dependent Confabulation Implementations Review
-Summarise: Australian field data on co-dependent confabulation effectiveness...
+[1/3] Renewable Energy Implementations Review
+Summarise: Danish field data on renewable energy grid integration...
 
 [p] Promote → [a] Archive → [d] Defer → [s] Stop
 ```
 
 Promote sets `status: draft`, runs semantic search for related notes, offers to insert wikilinks, and adds a link from the effort hub.
 
-**4. Check effort status.** Ask "where does the co-dependent-confabulation effort stand?" and brain-effort finds the effort note, searches for tagged notes, reads the wikilinks, groups everything by status, and flags orphans (tagged but not linked from the hub).
+**4. Check effort status.** Ask "where does the renewable-energy effort stand?" and brain-effort finds the effort note, searches for tagged notes, reads the wikilinks, groups everything by status, and flags orphans (tagged but not linked from the hub).
 
 ---
 
@@ -318,7 +318,7 @@ Promote sets `status: draft`, runs semantic search for related notes, offers to 
 2. **Triage** — review raw notes, promote or archive
 3. **Connect** — link related notes; the system suggests connections
 4. **Surface** — "what's active?", "what's simmering?", "what's in this effort?"
-5. **Archive** — mark completed work archived; it stays in the vault, just out of the way
+5. **Archive** — mark completed work archived; it stays in the brain, just out of the way
 
 Frontmatter and tags make steps 3-5 possible. Semantic search finds notes you'd forgotten. Wikilinks make connections explicit.
 
@@ -356,7 +356,7 @@ The system watches for changes and reindexes automatically. Force a full reindex
 Frontmatter is YAML:
 - 2 spaces for indentation, not tabs
 - Strings with special characters need quotes: `title: "Use SQLite for storage?"`
-- Lists use square brackets: `tags: [effort, co-dependent-confabulation]`
+- Lists use square brackets: `tags: [effort, renewable-energy]`
 - Empty fields: `effort: ""` or just omit them
 
 Templates handle this for you. If you hand-edit and break the YAML, the system will warn you.
@@ -364,7 +364,7 @@ Templates handle this for you. If you hand-edit and break the YAML, the system w
 The `brain-edit` tool updates frontmatter without touching the note body:
 
 ```
-brain_edit(op=update_frontmatter, filepath="Efforts/co-dependent-confabulation.md",
+brain_edit(op=update_frontmatter, filepath="Efforts/renewable-energy.md",
   frontmatter={"status": "archived", "intensity": "simmering"})
 ```
 
@@ -378,13 +378,13 @@ You can add custom fields to frontmatter:
 
 ```yaml
 type: effort
-title: "Co-dependent Confabulation"
+title: "Renewable Energy"
 status: active
 intensity: focus
 owner: "Chris"
 budget: "$50K"
 created: 2026-04-08
-tags: [effort, co-dependent-confabulation]
+tags: [effort, renewable-energy]
 ```
 
 The system won't query on custom fields, but skills may read them.
@@ -393,7 +393,7 @@ The system won't query on custom fields, but skills may read them.
 
 ## Getting started
 
-1. Run `brain-init` to set up the vault structure, templates, and embeddings database
+1. Run `brain-init` to set up the brain structure, templates, and embeddings database
 2. Run `brain-daily` to create today's note
 3. Use `brain-capture` to add a discovery
 4. Use `brain-create-effort` to start an effort
