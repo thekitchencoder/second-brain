@@ -16,7 +16,7 @@ Uses MCP tools only. The vault lives inside a Docker container — filesystem to
 ### 1. Identify the sources
 
 Accept any mix of:
-- Explicit paths (`Efforts/jobs-guarantee/research.md`)
+- Explicit paths (`Efforts/co-dependent-confabulation/research.md`)
 - Titles → resolve via `brain_search(title)`
 - A search query → run `brain_search(query)`, confirm which results to include
 

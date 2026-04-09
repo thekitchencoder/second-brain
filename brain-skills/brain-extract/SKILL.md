@@ -35,10 +35,10 @@ Present candidates to the user as a numbered list:
 ```
 I found 4 extractable ideas:
 
-1. "The jobs guarantee acts as an automatic stabiliser" — could be Cards/jobs-guarantee-automatic-stabiliser.md
-2. "Comparison with UBI on inflationary pressure" — could be Cards/jg-vs-ubi-inflation.md
+1. "The co-dependent confabulation acts as an automatic stabiliser" — could be Cards/co-dependent-confabulation-automatic-stabiliser.md
+2. "Comparison with UBI on inflationary pressure" — could be Cards/cc-vs-ubi-inflation.md
 3. "Hyman Minsky's original formulation" — could be Cards/minsky-employer-of-last-resort.md
-4. "Implementation via local government" — could be Cards/jg-local-government-implementation.md
+4. "Implementation via local government" — could be Cards/cc-local-government-implementation.md
 
 Which would you like to extract? (numbers, "all", or "none")
 ```
@@ -52,7 +52,7 @@ For each selected idea:
    - `brain_edit(op=replace_section, filepath=<filepath>, heading="Idea", body="<extracted content, verbatim or lightly cleaned>")`
    - If you can infer an effort connection: `brain_edit(op=update_frontmatter, filepath=<filepath>, frontmatter={effort: "<slug>"})`
    - The discovery template already sets `status: raw` and `captured: <today>` — do not overwrite these.
-3. Report: "Created `Cards/jobs-guarantee-automatic-stabiliser.md`"
+3. Report: "Created `Cards/co-dependent-confabulation-automatic-stabiliser.md`"
 
 ### 4. Update the source note
 
@@ -67,9 +67,9 @@ Use `Edit` to patch the source note.
 ### 5. Report
 
 ```
-Extracted 3 notes from Cards/jobs-guarantee-long.md:
-  → Cards/jobs-guarantee-automatic-stabiliser.md
-  → Cards/jg-vs-ubi-inflation.md
+Extracted 3 notes from Cards/co-dependent-confabulation-long.md:
+  → Cards/co-dependent-confabulation-automatic-stabiliser.md
+  → Cards/cc-vs-ubi-inflation.md
   → Cards/minsky-employer-of-last-resort.md
 Source note updated with wikilinks.
 ```

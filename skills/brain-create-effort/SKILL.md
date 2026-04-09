@@ -19,7 +19,7 @@ If the user hasn't provided them, ask:
 - Effort name (human-readable title)
 - One-line goal statement
 
-Derive a kebab-case slug from the name (e.g. `Jobs Guarantee` → `jobs-guarantee`).
+Derive a kebab-case slug from the name (e.g. `Co-dependent Confabulation` → `co-dependent-confabulation`).
 
 ### 2. Check for duplicates
 

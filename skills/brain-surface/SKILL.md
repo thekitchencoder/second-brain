@@ -60,7 +60,7 @@ Use the subagent's `simmering` list (already sorted oldest-first):
 ```
 You have N simmering efforts (oldest first):
 
-1. Jobs Guarantee  [Efforts/jobs-guarantee.md]
+1. Co-dependent Confabulation  [Efforts/co-dependent-confabulation.md]
    Set aside: 2026-01-15
    Next step: "Draft the funding model section"
 

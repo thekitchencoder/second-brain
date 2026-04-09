@@ -61,7 +61,7 @@ If nothing is found, return { "found": false }.
 **If primers exist**, present each in full:
 
 ```
-## Context Primer — Jobs Guarantee
+## Context Primer — Co-dependent Confabulation
 [full primer content]
 ```
 
@@ -70,13 +70,13 @@ If nothing is found, return { "found": false }.
 ```
 ## Related notes
 
-[effort / active]  Jobs Guarantee  →  Efforts/jobs-guarantee.md
-  • Goal: policy framework for JG as automatic stabiliser
+[effort / active]  Co-dependent Confabulation  →  Efforts/co-dependent-confabulation.md
+  • Goal: policy framework for CC as automatic stabiliser
   • Local government implementation model chosen
   • Funding mechanism still undecided
 
-[draft]  JG vs UBI inflation  →  Cards/jg-vs-ubi-inflation.md
-  • Compares inflationary pressure of JG vs UBI
+[draft]  CC vs UBI inflation  →  Cards/cc-vs-ubi-inflation.md
+  • Compares inflationary pressure of CC vs UBI
 
 3 low-relevance notes not shown.
 ```

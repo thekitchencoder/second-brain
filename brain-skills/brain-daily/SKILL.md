@@ -52,7 +52,7 @@ Return:
 {
   "carried_forward": ["- [ ] item one", ...],   // or empty list
   "inbox_wikilinks": ["[[Title]]", ...],         // or empty list
-  "active_efforts":  ["Jobs Guarantee", ...]     // or empty list
+  "active_efforts":  ["Co-dependent Confabulation", ...]     // or empty list
 }
 ```
 
