@@ -2,7 +2,7 @@
 type: discovery
 title: "{{title}}"
 status: raw
-captured: {{format-date now "2006-01-02"}}
+captured: {{format-date now "%Y-%m-%d"}}
 device: ""
 effort: ""
 tags: [discovery]

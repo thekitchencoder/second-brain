@@ -23,7 +23,7 @@ Today's date: use the current date in `YYYY-MM-DD` format.
 Run `Glob(pattern="Calendar/*YYYY-MM-DD*")` (substitute the actual date).
 
 - **Exists** → Read it, surface its content, skip to step 3
-- **Missing** → Run `brain_create(template="daily", title="", directory="Calendar/")`. Note the returned filepath. Populate using `brain_edit`, not `brain_write` — then go to step 2.
+- **Missing** → Run `brain_create(template="daily", title="YYYY-MM-DD", directory="Calendar/")` (substitute today's actual date as the title). Note the returned filepath. Populate using `brain_edit`, not `brain_write` — then go to step 2.
 
 ### 2. Seed today's note
 
@@ -79,6 +79,7 @@ Show the user today's note content and say: "Today's note is at `Calendar/YYYY-M
 ## Rules
 
 - Check with Glob before creating — skip `brain_create` if today's note already exists.
+- Always use `brain_create` to create the note — never write template content manually. The template contains Go date format patterns (e.g. `2006-01-02`) that `zk` substitutes with the real date. Writing them literally produces wrong output.
 - Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
 - Carried forward items are read-only suggestions. Don't auto-move or delete them from yesterday's note.
 - Keep the seeded content minimal. The note is a workspace, not a report.

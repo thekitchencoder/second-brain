@@ -4,8 +4,8 @@ id: ADR-000
 effort: ""
 title: "{{title}}"
 status: proposed  # valid: proposed | accepted | deprecated
-date: {{format-date now "2006-01-02"}}
-created: {{format-date now "2006-01-02"}}
+date: {{format-date now "%Y-%m-%d"}}
+created: {{format-date now "%Y-%m-%d"}}
 tags: [adr]
 ---
 
