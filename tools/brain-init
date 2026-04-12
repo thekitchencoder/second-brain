@@ -49,6 +49,10 @@ _CLAUDE_TEMPLATES_CANDIDATES = [
     "/usr/local/lib/brain-tools/claude",              # inside container
     os.path.join(_REPO_ROOT, "claude"),               # local dev
 ]
+_HOOKS_SOURCE_CANDIDATES = [
+    "/usr/local/lib/brain-tools/hooks",               # inside container
+    os.path.join(_REPO_ROOT, "hooks"),                # local dev
+]
 
 # Vault skills need direct filesystem access (mv, Glob date patterns, Edit).
 # Global skills are MCP-only — they work from any Claude Code session with the brain plugin.
@@ -374,6 +378,9 @@ def init_vault_skills(brain_path):
             continue
         if os.path.isdir(dst):
             continue
+        # Remove stale symlinks (e.g. leftover host-path symlinks from pre-container era)
+        if os.path.islink(dst):
+            os.remove(dst)
         shutil.copytree(src, dst)
         installed.append(name)
 
@@ -482,8 +489,21 @@ def stage_brain_plugin(brain_path):
         if os.path.isfile(plugin_claude_src):
             shutil.copy2(plugin_claude_src, plugin_claude_dst)
 
+    # Copy hooks into plugin
+    hooks_source = _find_source(_HOOKS_SOURCE_CANDIDATES)
+    if hooks_source:
+        hooks_dst = os.path.join(plugin_dir, "hooks")
+        if os.path.isdir(hooks_dst):
+            shutil.rmtree(hooks_dst)
+        shutil.copytree(hooks_source, hooks_dst)
+        # Ensure scripts are executable
+        for name in os.listdir(hooks_dst):
+            fpath = os.path.join(hooks_dst, name)
+            if os.path.isfile(fpath) and (name.endswith(".sh") or name.endswith(".cmd")):
+                os.chmod(fpath, 0o755)
+
     if staged:
-        print(f"  Staged brain plugin to .ai/brain-plugin/ ({len(staged)} skills + MCP config)")
+        print(f"  Staged brain plugin to .ai/brain-plugin/ ({len(staged)} skills + MCP config + hooks)")
 
 
 def init_ace_folders(brain_path):
