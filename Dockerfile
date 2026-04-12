@@ -1,6 +1,6 @@
 FROM debian:bookworm-slim
 
-LABEL version="1.0.2"
+LABEL version="1.1.0"
 
 ARG ZK_VERSION=0.14.1
 ARG SQLITE_VEC_VERSION=0.1.6
