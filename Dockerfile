@@ -97,6 +97,7 @@ COPY --chown=coder:coder claude/seed/ /usr/local/lib/brain-tools/claude-seed/
 COPY --chown=coder:coder claude/plugin-claude.md claude/vault-claude.md /usr/local/lib/brain-tools/claude/
 COPY --chown=coder:coder skills/ /usr/local/lib/brain-tools/claude-seed/skills/
 COPY --chown=coder:coder brain-skills/ /usr/local/lib/brain-tools/claude-seed/skills/
+COPY --chown=coder:coder hooks/ /usr/local/lib/brain-tools/hooks/
 # Pre-create volume-mounted directories owned by coder so Docker inherits
 # the right permissions on first mount (avoids root-owned dirs and silent failures).
 RUN mkdir -p /home/coder/.claude /home/coder/.zsh-data \
