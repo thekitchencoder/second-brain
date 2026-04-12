@@ -2,7 +2,7 @@
 type: context-primer
 title: "{{title}}"
 status: current
-created: {{format-date now "2006-01-02"}}
+created: {{format-date now "%Y-%m-%d"}}
 tags: [context]
 ---
 

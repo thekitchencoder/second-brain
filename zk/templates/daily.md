@@ -1,12 +1,12 @@
 ---
 type: daily
-title: "{{format-date now "2006-01-02"}}"
-date: {{format-date now "2006-01-02"}}
-created: {{format-date now "2006-01-02"}}
+title: "{{format-date now "%Y-%m-%d"}}"
+date: {{format-date now "%Y-%m-%d"}}
+created: {{format-date now "%Y-%m-%d"}}
 tags: [daily]
 ---
 
-# {{format-date now "2006-01-02"}}
+# {{format-date now "%Y-%m-%d"}}
 
 ## Carried forward
 
