@@ -40,19 +40,20 @@ a. Yesterday's open items
 
 b. Notes awaiting review
    Run in parallel: brain_query(status="raw") and brain_query(status="unset")
-   Merge and deduplicate. For each path, call brain_read(filepath) to get the title field.
-   Fall back to the filename stem (without extension) if title is absent.
-   Return a list of wikilink strings: ["[[Note Title One]]", "[[Note Title Two]]", ...]
+   Merge and deduplicate. Exclude daily notes (Calendar/*.md).
+   Extract the filename stem (without extension or directory) from each path — this is the wikilink target.
+   Return a list of wikilink strings: ["[[filename-stem]]", ...]
 
 c. Active efforts
    Run brain_query(status="active"). Filter to type: effort.
-   Return a list of effort titles.
+   Extract the filename stem from each path.
+   Return a list of filename stems.
 
 Return:
 {
-  "carried_forward": ["- [ ] item one", ...],   // or empty list
-  "inbox_wikilinks": ["[[Title]]", ...],         // or empty list
-  "active_efforts":  ["Renewable Energy", ...]     // or empty list
+  "carried_forward": ["- [ ] item one", ...],       // or empty list
+  "inbox_wikilinks": ["[[filename-stem]]", ...],     // or empty list
+  "active_efforts":  ["effort-slug", ...]            // or empty list
 }
 ```
 
@@ -69,7 +70,7 @@ brain_edit(op=replace_section, filepath=<filepath>, heading="Inbox",
 If `active_efforts` is non-empty:
 ```
 brain_edit(op=replace_section, filepath=<filepath>, heading="Today",
-  body="**Active efforts:**\n<effort titles as bullet list>")
+  body="**Active efforts:** [[slug-1]], [[slug-2]], ...")
 ```
 
 ### 3. Surface and hand off
@@ -83,3 +84,4 @@ Show the user today's note content and say: "Today's note is at `Calendar/YYYY-M
 - Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
 - Carried forward items are read-only suggestions. Don't auto-move or delete them from yesterday's note.
 - Keep the seeded content minimal. The note is a workspace, not a report.
+- **Wikilinks must use filename stems, not titles.** Extract the filename without extension from the path returned by `brain_query` (e.g. `Efforts/pain-tracker.md` → `[[pain-tracker]]`). Title-based links like `[[Pain Tracker]]` won't resolve.

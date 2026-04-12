@@ -26,12 +26,12 @@ Uses MCP tools only. The brain lives inside a Docker container — filesystem to
 Dispatch a subagent with this task:
 
 ```
-Run brain_query(status="active"). For each result, call brain_read(filepath) to get the
-full note and check its type and intensity fields.
+Run two queries in parallel:
+  a. brain_query(status="active", intensity="simmering") — direct filter, no post-processing needed
+  b. brain_query(status="active", type="effort") — to find efforts with missing intensity field
 
-Filter to notes where:
-  - type: effort
-  - intensity: simmering  (or intensity field missing — flag those separately)
+For each result from (a), call brain_read(filepath) to get the full note.
+From (b), subtract the results of (a) and read any remaining efforts to check for missing intensity field.
 
 For each simmering effort extract:
   - title

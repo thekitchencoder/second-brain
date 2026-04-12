@@ -211,10 +211,16 @@ def list_notes(
     tag: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
+    intensity: Optional[str] = None,
+    effort: Optional[str] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
 ):
     """List notes filtered by metadata (delegates to zk)."""
     result = handle_brain_query(
-        tag=tag, status=status, note_type=type, brain_path=_cfg.brain_path
+        tag=tag, status=status, note_type=type, brain_path=_cfg.brain_path,
+        intensity=intensity, effort=effort,
+        created_after=created_after, created_before=created_before,
     )
     if result.startswith("Invalid"):
         raise HTTPException(400, result)

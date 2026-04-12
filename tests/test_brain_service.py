@@ -281,6 +281,93 @@ def test_brain_query_accepts_valid_params(tmp_path):
     assert "invalid" not in result.lower()
 
 
+def _make_note(tmp_path, rel_path, frontmatter_str, body=""):
+    """Helper: create a markdown note with given frontmatter at rel_path under tmp_path."""
+    full = tmp_path / rel_path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text(f"---\n{frontmatter_str}\n---\n{body}\n")
+
+
+def test_brain_query_intensity_filter(tmp_path):
+    _make_note(tmp_path, "Efforts/a.md", "type: effort\nstatus: active\nintensity: focus")
+    _make_note(tmp_path, "Efforts/b.md", "type: effort\nstatus: active\nintensity: simmering")
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), intensity="focus")
+    assert "Efforts/a.md" in result
+    assert "Efforts/b.md" not in result
+
+
+def test_brain_query_effort_filter(tmp_path):
+    _make_note(tmp_path, "Cards/x.md", "type: note\neffort: walking-tracker")
+    _make_note(tmp_path, "Cards/y.md", "type: note\neffort: homelab")
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), effort="walking-tracker")
+    assert "Cards/x.md" in result
+    assert "Cards/y.md" not in result
+
+
+def test_brain_query_created_after(tmp_path):
+    _make_note(tmp_path, "Cards/old.md", "type: note\ncreated: 2026-01-01")
+    _make_note(tmp_path, "Cards/new.md", "type: note\ncreated: 2026-04-10")
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), created_after="2026-03-01")
+    assert "Cards/new.md" in result
+    assert "Cards/old.md" not in result
+
+
+def test_brain_query_created_before(tmp_path):
+    _make_note(tmp_path, "Cards/old.md", "type: note\ncreated: 2026-01-01")
+    _make_note(tmp_path, "Cards/new.md", "type: note\ncreated: 2026-04-10")
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), created_before="2026-02-01")
+    assert "Cards/old.md" in result
+    assert "Cards/new.md" not in result
+
+
+def test_brain_query_created_date_range(tmp_path):
+    _make_note(tmp_path, "Cards/a.md", "type: note\ncreated: 2026-01-01")
+    _make_note(tmp_path, "Cards/b.md", "type: note\ncreated: 2026-03-15")
+    _make_note(tmp_path, "Cards/c.md", "type: note\ncreated: 2026-05-01")
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path),
+                                created_after="2026-02-01", created_before="2026-04-01")
+    assert "Cards/b.md" in result
+    assert "Cards/a.md" not in result
+    assert "Cards/c.md" not in result
+
+
+def test_brain_query_rejects_invalid_date_format(tmp_path):
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), created_after="April 10")
+    assert "invalid" in result.lower()
+
+
+def test_brain_query_rejects_invalid_intensity(tmp_path):
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), intensity="foo;bar")
+    assert "invalid" in result.lower()
+
+
+def test_brain_query_no_match_shows_existing_values(tmp_path):
+    _make_note(tmp_path, "Efforts/a.md", "type: effort\nstatus: active\nintensity: focus")
+    _make_note(tmp_path, "Efforts/b.md", "type: effort\nstatus: active\nintensity: simmering")
+    result = handle_brain_query(tag=None, status=None, note_type=None,
+                                brain_path=str(tmp_path), intensity="banana")
+    assert "No notes matched" in result
+    assert "focus" in result
+    assert "simmering" in result
+
+
+def test_brain_query_no_match_hint_for_type(tmp_path):
+    _make_note(tmp_path, "Cards/a.md", "type: note\nstatus: draft")
+    _make_note(tmp_path, "Efforts/b.md", "type: effort\nstatus: active")
+    result = handle_brain_query(tag=None, status=None, note_type="project",
+                                brain_path=str(tmp_path))
+    assert "No notes matched" in result
+    assert "effort" in result
+    assert "note" in result
+
+
 # ── EmbeddingError handling ───────────────────────────────────────────
 
 
