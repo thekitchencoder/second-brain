@@ -123,18 +123,68 @@ def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: st
     return _format_results(deduped)
 
 
+def _walk_brain_files(brain_path: str) -> list[str]:
+    """Walk all markdown files in the brain, skipping dot-directories and templates."""
+    candidates = []
+    for root, dirs, fnames in os.walk(brain_path):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "templates"]
+        candidates += [os.path.join(root, f) for f in fnames if f.endswith(".md")]
+    return candidates
+
+
+def _collect_field_values(brain_path: str, field: str) -> set[str]:
+    """Scan all notes and return the set of distinct values for a frontmatter field."""
+    values: set[str] = set()
+    for fpath in _walk_brain_files(brain_path):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception:
+            continue
+        meta, _ = extract_frontmatter(content)
+        val = meta.get(field)
+        if val and isinstance(val, str):
+            values.add(val)
+    return values
+
+
+def _no_match_hint(filters: dict[str, Optional[str]], brain_path: str) -> str:
+    """Build a helpful 'no matches' message listing existing values for filtered fields."""
+    parts = ["No notes matched the query."]
+    field_map = {"status": "status", "type": "type", "intensity": "intensity", "effort": "effort"}
+    for param_name, field_name in field_map.items():
+        if filters.get(param_name):
+            existing = sorted(_collect_field_values(brain_path, field_name))
+            if existing:
+                parts.append(f"Existing {field_name} values: {', '.join(existing)}")
+    return "\n".join(parts)
+
+
 def handle_brain_query(
-    tag: Optional[str], status: Optional[str], note_type: Optional[str], brain_path: str
+    tag: Optional[str], status: Optional[str], note_type: Optional[str],
+    brain_path: str,
+    intensity: Optional[str] = None, effort: Optional[str] = None,
+    created_after: Optional[str] = None, created_before: Optional[str] = None,
 ) -> str:
-    for name, value in [("tag", tag), ("status", status), ("type", note_type)]:
+    for name, value in [("tag", tag), ("status", status), ("type", note_type),
+                        ("intensity", intensity), ("effort", effort)]:
         if value:
             if err := _validate_query_param(name, value):
                 return err
 
-    # status and type are frontmatter fields — zk's --match does FTS on note body
-    # and won't find them reliably. Walk the vault and check frontmatter directly.
+    # Validate date params
+    for name, value in [("created_after", created_after), ("created_before", created_before)]:
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                return f"Invalid {name}: expected YYYY-MM-DD format"
+
+    # Frontmatter filters require walking files directly — zk's FTS won't match them.
     # tag uses zk's native --tag filter, which is index-backed and correct.
-    if status or note_type:
+    has_frontmatter_filter = any([status, note_type, intensity, effort, created_after, created_before])
+
+    if has_frontmatter_filter:
         # Collect candidates via zk if a tag filter is also present, otherwise all files
         if tag:
             # Refresh zk index first so tag filter is current
@@ -161,13 +211,7 @@ def handle_brain_query(
                 for f in result.stdout.splitlines() if f.strip()
             ]
         else:
-            # No tag filter — walk all markdown files
-            candidates = []
-            for root, dirs, fnames in os.walk(brain_path):
-                dirs[:] = [d for d in dirs if not d.startswith(".") and d != "templates"]
-                candidates += [
-                    os.path.join(root, f) for f in fnames if f.endswith(".md")
-                ]
+            candidates = _walk_brain_files(brain_path)
 
         files = []
         for fpath in candidates:
@@ -184,10 +228,29 @@ def handle_brain_query(
                 continue
             if note_type and meta.get("type") != note_type:
                 continue
+            if intensity and meta.get("intensity") != intensity:
+                continue
+            if effort and meta.get("effort") != effort:
+                continue
+            if created_after or created_before:
+                created = meta.get("created") or meta.get("date") or ""
+                if isinstance(created, str):
+                    created_str = created[:10]  # handle datetime strings
+                else:
+                    created_str = str(created)[:10]
+                if not created_str:
+                    continue
+                if created_after and created_str < created_after:
+                    continue
+                if created_before and created_str > created_before:
+                    continue
             files.append(os.path.relpath(fpath, brain_path))
 
         if not files:
-            return "No notes matched the query."
+            return _no_match_hint(
+                {"status": status, "type": note_type, "intensity": intensity, "effort": effort},
+                brain_path,
+            )
         return "\n".join(sorted(files))
 
     # tag-only query: use zk with index refresh

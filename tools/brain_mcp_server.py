@@ -51,13 +51,17 @@ def _build_server():
             ),
             Tool(
                 name="brain_query",
-                description="Structured metadata query using zk. Filter notes by tag, status, or type. Use status='unset' to find notes with no status field.",
+                description="Structured metadata query using zk. Filter notes by tag, status, type, intensity, effort, or date range. Use status='unset' to find notes with no status field. If no notes match, existing values for the filtered fields are shown.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "tag": {"type": "string"},
                         "status": {"type": "string", "description": "Filter by status value, or 'unset' to find notes missing the status field entirely."},
                         "type": {"type": "string"},
+                        "intensity": {"type": "string", "description": "Filter by effort intensity (focus, ongoing, simmering)."},
+                        "effort": {"type": "string", "description": "Filter by effort field in frontmatter."},
+                        "created_after": {"type": "string", "description": "Include notes created on or after this date (YYYY-MM-DD)."},
+                        "created_before": {"type": "string", "description": "Include notes created on or before this date (YYYY-MM-DD)."},
                     },
                 },
             ),
@@ -215,6 +219,10 @@ def _build_server():
                 status=arguments.get("status"),
                 note_type=arguments.get("type"),
                 brain_path=brain_path,
+                intensity=arguments.get("intensity"),
+                effort=arguments.get("effort"),
+                created_after=arguments.get("created_after"),
+                created_before=arguments.get("created_before"),
             )
         elif name == "brain_create":
             text = handle_brain_create(
