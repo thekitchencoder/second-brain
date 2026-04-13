@@ -370,24 +370,22 @@ def init_vault_skills(brain_path):
     dest_dir = os.path.join(brain_path, ".claude", "skills")
     os.makedirs(dest_dir, exist_ok=True)
 
-    installed = []
+    updated = []
     for name in sorted(_VAULT_SKILL_NAMES):
         src = os.path.join(skills_source, name)
         dst = os.path.join(dest_dir, name)
         if not os.path.isdir(src):
             continue
+        # Always overwrite — these are image-provided, not user-edited
         if os.path.isdir(dst):
-            continue
-        # Remove stale symlinks (e.g. leftover host-path symlinks from pre-container era)
-        if os.path.islink(dst):
+            shutil.rmtree(dst)
+        elif os.path.islink(dst):
             os.remove(dst)
         shutil.copytree(src, dst)
-        installed.append(name)
+        updated.append(name)
 
-    if installed:
-        print(f"  Installed {len(installed)} vault skills to .claude/skills/")
-    else:
-        print(f"  Vault skills already installed.")
+    if updated:
+        print(f"  Updated {len(updated)} vault skills in .claude/skills/")
 
     # Seed vault-level CLAUDE.md (filesystem extension for vault sessions)
     claude_templates = _find_source(_CLAUDE_TEMPLATES_CANDIDATES)

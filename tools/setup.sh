@@ -15,12 +15,10 @@ fi
 CLAUDE_DIR=/home/coder/.claude
 SEED_DIR=/usr/local/lib/brain-tools/claude-seed
 mkdir -p "$CLAUDE_DIR"
-# In dev mode, force-resync skills on every restart so edits land without
-# deleting the volume. Other seeded files (settings, .claude.json) are
-# left intact so user config survives restarts.
-if [ "${BRAIN_DEV:-0}" = "1" ]; then
-    rm -rf "$CLAUDE_DIR/skills"
-fi
+# Always refresh skills from the image — these are not user-edited.
+# Other seeded files (settings, .claude.json) are left intact so user
+# config survives restarts.
+rm -rf "$CLAUDE_DIR/skills"
 # Seed visible files/dirs (settings.json, skills/, agents/, etc.)
 for f in "$SEED_DIR"/*; do
     dest="$CLAUDE_DIR/$(basename "$f")"
@@ -33,10 +31,10 @@ fi
 # Symlink ~/.claude.json → volume so Claude Code session writes persist
 ln -sf "$CLAUDE_DIR/.claude.json" /home/coder/.claude.json
 
-# Auto-initialise the vault on first mount (non-interactive defaults).
-# This ensures .zk/, .ai/, .vscode/, and vault skills are always present
-# without the user needing to remember to run brain-init manually.
-if [ -d /brain ] && [ ! -d /brain/.zk ]; then
+# Auto-initialise / update the vault (non-interactive defaults).
+# Runs on every start so vault skills, plugin staging, and hooks stay
+# current after image upgrades. brain-init is idempotent.
+if [ -d /brain ]; then
     brain-init --auto
 fi
 
