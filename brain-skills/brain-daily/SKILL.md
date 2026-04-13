@@ -5,7 +5,7 @@ description: Use when the user wants to start their day, open today's daily note
 
 # Brain Daily
 
-Create or open today's daily note. Surface yesterday's open items and wikilinks to notes awaiting review.
+Create or open today's daily note. Surface open items from the most recent previous daily note and wikilinks to notes awaiting review.
 
 ## Path Translation
 
@@ -32,11 +32,14 @@ Dispatch a subagent with this task:
 ```
 Gather seed data for today's daily note. Run all three lookups, return structured results.
 
-a. Yesterday's open items
-   Yesterday's date: <yesterday-date>
-   Glob(pattern="Calendar/*<yesterday-date>*"). If a file is found, run:
-   Grep(pattern="- \[ \]|TODO|open:|follow up", path=<yesterday filepath>)
-   Return the matching lines as a list, or an empty list if none.
+a. Most recent daily note's open items
+   Today's date: <today-date>
+   Glob(pattern="Calendar/*.md") to list all daily notes.
+   Sort by filename descending and find the most recent one BEFORE today.
+   (This handles weekends and gaps — don't assume yesterday has a note.)
+   If a file is found, run:
+   Grep(pattern="- \[ \]|TODO|open:|follow up", path=<that filepath>)
+   Return the matching lines and the date of that note, or an empty list if none.
 
 b. Notes awaiting review
    Run in parallel: brain_query(status="raw") and brain_query(status="unset")
@@ -52,6 +55,7 @@ c. Active efforts
 Return:
 {
   "carried_forward": ["- [ ] item one", ...],       // or empty list
+  "carried_from": "YYYY-MM-DD",                      // date of the source note, or null
   "inbox_wikilinks": ["[[filename-stem]]", ...],     // or empty list
   "active_efforts":  ["effort-slug", ...]            // or empty list
 }
@@ -61,7 +65,8 @@ Use the subagent's result to populate sections:
 
 ```
 brain_edit(op=replace_section, filepath=<filepath>, heading="Carried forward",
-  body="<carried_forward lines joined with \n, or '<!-- nothing carried forward -->'>")
+  body="<carried_forward lines joined with \n, or '<!-- nothing carried forward -->'>"
+  If carried_from is not yesterday, prepend "<!-- from YYYY-MM-DD -->" so the source is clear.)
 
 brain_edit(op=replace_section, filepath=<filepath>, heading="Inbox",
   body="<inbox_wikilinks joined with \n, or '<!-- nothing awaiting review -->'>")
@@ -82,6 +87,6 @@ Show the user today's note content and say: "Today's note is at `Calendar/YYYY-M
 - Check with Glob before creating — skip `brain_create` if today's note already exists.
 - Always use `brain_create` to create the note — never write template content manually. The template contains Go date format patterns (e.g. `2006-01-02`) that `zk` substitutes with the real date. Writing them literally produces wrong output.
 - Use `brain_edit` after `brain_create`, not `brain_write` — preserves template frontmatter.
-- Carried forward items are read-only suggestions. Don't auto-move or delete them from yesterday's note.
+- Carried forward items are read-only suggestions. Don't auto-move or delete them from the source note.
 - Keep the seeded content minimal. The note is a workspace, not a report.
 - **Wikilinks must use filename stems, not titles.** Extract the filename without extension from the path returned by `brain_query` (e.g. `Efforts/pain-tracker.md` → `[[pain-tracker]]`). Title-based links like `[[Pain Tracker]]` won't resolve.
