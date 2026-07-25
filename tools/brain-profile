@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""brain-profile: manage a brain's profile.
+
+Usage:
+  brain-profile update [path]   Pull the latest profile (git clones only)
+  brain-profile show   [path]   Print the active profile's identity + origin
+"""
+import os
+import subprocess
+import sys
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _SCRIPT_DIR)
+from lib.profile import load_profile  # noqa: E402
+
+
+def _profile_dir(argv):
+    path = argv[0] if argv else os.environ.get("BRAIN_PATH", "/brain")
+    return os.path.join(path, ".brain")
+
+
+def _is_git_clone(profile_dir):
+    return os.path.isdir(os.path.join(profile_dir, ".git"))
+
+
+def cmd_update(profile_dir):
+    if not os.path.isfile(os.path.join(profile_dir, "profile.toml")):
+        print(f"No profile at {profile_dir}. Run brain-init first.", file=sys.stderr)
+        return 1
+    if not _is_git_clone(profile_dir):
+        print("Profile is not a git clone (bundled or copied) — nothing to update.")
+        return 0
+    try:
+        r = subprocess.run(["git", "-C", profile_dir, "pull", "--ff-only"],
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        print("git is not installed or not on PATH", file=sys.stderr)
+        return 1
+    if r.returncode != 0:
+        print(f"Profile update failed:\n{r.stderr.strip()}", file=sys.stderr)
+        return 1
+    print(r.stdout.strip() or "Profile already up to date.")
+    return 0
+
+
+def cmd_show(profile_dir):
+    if not os.path.isfile(os.path.join(profile_dir, "profile.toml")):
+        print(f"No profile at {profile_dir}.", file=sys.stderr)
+        return 1
+    p = load_profile(profile_dir)
+    print(f"profile:    {p.name}")
+    print(f"plugin:     {p.plugin.name} (author {p.plugin.author})")
+    print(f"mcp_server: {p.plugin.mcp_server}")
+    print(f"marker:     {p.plugin.marker}")
+    origin = p.origin or {}
+    print(f"origin:     {origin.get('repo', '(none)')} @ {origin.get('ref', '-')}")
+    print(f"git clone:  {'yes' if _is_git_clone(profile_dir) else 'no'}")
+    return 0
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    profile_dir = _profile_dir(rest)
+    if cmd == "update":
+        return cmd_update(profile_dir)
+    if cmd == "show":
+        return cmd_show(profile_dir)
+    print(f"Unknown command: {cmd}\n{__doc__}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

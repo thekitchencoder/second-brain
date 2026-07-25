@@ -25,7 +25,7 @@ task shell       # Open zsh in container
 task down        # Stop and remove container
 ```
 
-`task up` bind-mounts `tools/lib/` and `zk/templates/` and sets `BRAIN_DEV=1`, so Python and template changes are live immediately. Skills are force-reseeded from the image on every restart.
+`task up` bind-mounts `tools/lib/` and `profiles/ace/templates/` and sets `BRAIN_DEV=1`, so Python and template changes are live immediately. Skills are force-reseeded from the image on every restart.
 
 ### Base image dev (MCP + brain tools)
 
@@ -52,8 +52,8 @@ task restart-ui # Restart
 | What changed | Command | Notes |
 |---|---|---|
 | `tools/lib/*.py` | just save | bind-mounted — live immediately |
-| `zk/templates/` | just save | bind-mounted — live immediately |
-| `skills/`, `brain-skills/` | `task sync-skills` | copies to `~/.claude/skills/`; run `/reload` in Claude Code |
+| `profiles/ace/templates/` | just save | bind-mounted — live immediately |
+| `profiles/ace/skills/` | `task sync-skills` | copies to `~/.claude/skills/`; run `/reload` in Claude Code |
 | Entrypoint or image env | `task restart` (or `restart-ui`) | skills auto-reseeded from image |
 | Dockerfile changes | `task build && task restart` | full rebuild needed |
 | Dockerfile.ui changes | `task build-ui && task restart-ui` | rebuild UI layer only |
@@ -90,15 +90,25 @@ Tools: `brain_search`, `brain_query`, `brain_read`, `brain_write`, `brain_create
 
 ### Skills System
 
-Two tiers of Claude Code skills:
-- **`skills/`** — Global skills (11): MCP-only, work from any host session via `claude plugin add`. Includes brain-capture, brain-connect, brain-context, brain-create-effort, brain-distil, brain-effort, brain-project, brain-save, brain-setup, brain-surface, brain-triage.
-- **`brain-skills/`** — Brain-local skills (5): need direct filesystem access (mv, Glob, Edit). Includes brain-daily, brain-extract, brain-hygiene, brain-rename, brain-reorganise.
+Skills now live in the **profile**, not the top-level repo. The bundled `ace` profile (`profiles/ace/`) carries two tiers under `skills/`:
+- **`skills/global/`** — 11 skills: MCP-only, work from any host session via the Claude Code plugin staged at `<brain>/.ai/brain-plugin/`. Includes brain-capture, brain-connect, brain-context, brain-create-effort, brain-distil, brain-effort, brain-project, brain-save, brain-setup, brain-surface, brain-triage.
+- **`skills/vault/`** — 5 skills: need direct filesystem access (mv, Glob, Edit). Includes brain-daily, brain-extract, brain-hygiene, brain-rename, brain-reorganise.
 
-Both tiers are baked into the Docker image and seeded into `~/.claude/skills/` inside the container by `entrypoint.sh`. Global skills use MCP tools only; brain-local skills also use filesystem tools for structural operations. When editing skills, check both directories.
+`brain-init` resolves a profile into `<brain>/.brain/` (see "Profiles" below), copies the vault tier into `<brain>/.claude/skills/`, and stages the global tier (plus hooks and plugin identity) into `<brain>/.ai/brain-plugin/`. `tools/setup.sh`'s `seed_skills_from_profile` then copies both tiers from `<brain>/.brain/skills/{global,vault}` into the container's `~/.claude/skills/` on every start. When editing the bundled skills, edit them under `profiles/ace/skills/global/` or `profiles/ace/skills/vault/` — the old top-level `skills/`/`brain-skills/` directories no longer exist.
+
+### Profiles
+
+A brain is self-describing: everything skill-, template-, hook-, and plugin-identity-related is resolved from `<brain>/.brain/`, seeded once by `brain-init` (`resolve_profile` in `tools/brain-init`) and never hand-edited — it's reseeded/updated, not user-maintained.
+
+Source precedence, resolved only when `<brain>/.brain/profile.toml` is absent:
+1. A custom source — `brain-init --profile-repo <url-or-path>` or `-e BRAIN_PROFILE_REPO=<url-or-path>` for the container — git-cloned (URL or existing git repo) or copied (plain local dir) into `.brain/`.
+2. The bundled `ace` profile (`profiles/ace/`, or `/usr/local/lib/brain-tools/profiles/ace` in the container) — copied in as the zero-config, offline default.
+
+`brain-profile show` prints the active profile's identity and origin; `brain-profile update` runs `git pull --ff-only` against a cloned profile (a no-op for the bundled/copied default, which isn't a git clone).
 
 ### Brain Structure Convention (ACE-aligned)
 
-Notes are organized as `Atlas/`, `Efforts/`, `Cards/`, `Calendar/`, `Sources/`. Templates in `zk/templates/` define frontmatter schemas per note type. `brain-init` creates the brain scaffold including `.zk/`, `.ai/`, `.vscode/`, `.claude/skills/`, and optionally the ACE folder structure.
+Notes are organized as `Atlas/`, `Efforts/`, `Cards/`, `Calendar/`, `Sources/` — the bundled `ace` profile's `folders`. Templates in `profiles/ace/templates/` define frontmatter schemas per note type; `brain-init` copies them into `<brain>/.zk/templates/` and composes `<brain>/.zk/config.toml` from engine-owned zk infra plus the profile's `[zk]` conventions. `brain-init` creates the brain scaffold including `.brain/`, `.zk/`, `.ai/`, `.vscode/`, `.claude/skills/`, and optionally the ACE folder structure.
 
 ### Embedding Configuration
 
@@ -115,8 +125,8 @@ All model endpoints are configurable via `.env` in the brain root (generated by 
 | `tools/entrypoint-ui.sh` | UI image entrypoint — sources setup.sh, starts brain-api in bg, execs code-server |
 | `Dockerfile` | Lean base image (MCP + brain tools, no code-server) |
 | `Dockerfile.ui` | UI image — FROM base, adds code-server + Claude Code + extensions |
-| `zk/config.toml` | zk notebook configuration |
-| `prompts/setup.md` | Brain setup conventions and frontmatter rules |
+| `profiles/ace/profile.toml` | Bundled profile manifest — folders, skills, plugin identity, zk conventions |
+| `tools/lib/profile.py` | Profile loading/validation/zk-config composition (`load_profile`, `compose_zk_config`) |
 
 ## Release Process
 

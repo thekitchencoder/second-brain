@@ -209,4 +209,9 @@ def check_collisions(profile: Profile, installed: list) -> list:
                 f"CLAUDE.md marker '{profile.plugin.marker}' already claimed by "
                 f"profile '{other.name}'"
             )
+        if other.plugin.mcp_server == profile.plugin.mcp_server:
+            errors.append(
+                f"MCP server '{profile.plugin.mcp_server}' already claimed by "
+                f"profile '{other.name}'"
+            )
     return errors

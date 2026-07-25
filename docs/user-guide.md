@@ -54,7 +54,7 @@ A browser-based VS Code at `http://localhost:7778` — no password, single-user.
 Claude Code is pre-wired with:
 - Docker Model Runner as the LLM backend (no Anthropic API key needed)
 - Brain MCP server pre-approved — all brain tools available immediately
-- All skills from `skills/` and `brain-skills/` seeded into `~/.claude/skills/`
+- All skills from the active profile (global + vault tiers) seeded into `~/.claude/skills/` — see [Custom profiles](#custom-profiles) below
 
 ```bash
 # In the VS Code integrated terminal, Claude Code is ready:
@@ -220,14 +220,53 @@ The container works with any notes directory. On first use, `brain-init` adds:
 
 ```
 your-brain/
-├── .zk/                  ← zk config and templates (created by brain-init)
+├── .brain/               ← active profile: skills, templates, hooks (seeded by brain-init)
+│   └── profile.toml
+├── .zk/                  ← zk config and templates, composed from the profile
 │   ├── config.toml
 │   └── templates/
 ├── .ai/
-│   └── embeddings.db     ← sqlite-vec vector index (created by brain-index)
+│   ├── embeddings.db     ← sqlite-vec vector index (created by brain-index)
+│   └── brain-plugin/     ← staged Claude Code plugin (global skills + MCP config)
+├── .claude/
+│   └── skills/           ← vault-tier skills, copied from the profile
 └── .vscode/              ← VS Code workspace config (created by brain-init)
     ├── extensions.json
     └── settings.json
 ```
 
-`.zk/`, `.ai/`, and `.vscode/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine.
+`.brain/`, `.zk/`, `.ai/`, `.claude/`, and `.vscode/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine. `brain-init` auto-adds `.ai/`, `.zk/`, and `.brain/.git/` to the brain's `.gitignore` — if you sync the brain with Obsidian Sync or another tool, exclude those same paths there too.
+
+## Custom profiles
+
+A profile is the skills, zk templates, hooks, and Claude Code plugin identity that shape a brain — everything under `<brain>/.brain/`. Every brain has exactly one, resolved once on first `brain-init` and reseeded/updated (never hand-edited) after that.
+
+**Default: bundled `ace`.** With no configuration, `brain-init` copies the `ace` profile baked into the image — zero config, works fully offline, no network required. This is what you get from a plain `docker run`.
+
+**Custom profile.** Fork `profiles/ace/` from the [second-brain repo](https://github.com/thekitchencoder/second-brain), edit `profile.toml` (folders, skills, plugin identity, zk conventions) and the `skills/`, `templates/`, `hooks/` it references, then host the result as a git repository (a fork, a private repo, anything `git clone` can reach) or just a local directory.
+
+Point a new brain at it:
+
+```bash
+# Container — via env var
+docker run -d --name brain \
+  -v ~/Documents/brain:/brain \
+  -e BRAIN_PROFILE_REPO=https://github.com/you/my-brain-profile.git \
+  -p 7779:7779 -p 7780:7780 \
+  kitchencoder/second-brain:latest
+
+# Or on the host, via brain-init directly
+brain-init --profile-repo https://github.com/you/my-brain-profile.git /path/to/brain
+brain-init --profile-repo /path/to/local/profile-dir /path/to/brain
+```
+
+`BRAIN_PROFILE_REPO` / `--profile-repo` is only consulted the **first** time `brain-init` runs against a vault (when `.brain/profile.toml` doesn't exist yet). A git URL or existing git repo is `git clone`d; a plain local directory is copied. Because a custom profile clone happens on first init, **that first run needs network access** — the bundled `ace` default never does, since it's copied from the image.
+
+Once seeded, manage the profile with:
+
+```bash
+brain-profile show     # print the active profile's identity and origin
+brain-profile update   # git pull the profile (no-op unless it's a git clone)
+```
+
+`brain-profile update` only does something for a cloned custom profile — the bundled/copied `ace` default isn't a git clone, so it reports there's nothing to update. To pick up new upstream `ace` skills or templates, re-run `brain-init` after upgrading the image.

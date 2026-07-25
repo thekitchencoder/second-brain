@@ -25,7 +25,7 @@ tasks:
     cmd: docker build -t {{.IMAGE}} .
 
   up:
-    desc: Start the container (bind-mounts tools/lib and zk/templates for live reload)
+    desc: Start the container (bind-mounts tools/lib and profile templates for live reload)
     cmd: >
       docker run -d
       --name {{.CONTAINER}}
@@ -34,7 +34,7 @@ tasks:
       -v {{.VOL_CODESERVER}}:/home/coder/.local/share/code-server
       -v {{.VOL_ZSH}}:/home/coder/.zsh-data
       -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
-      -v "{{.ROOT_DIR}}/zk/templates:/usr/local/lib/brain-tools/zk/templates"
+      -v "{{.ROOT_DIR}}/profiles/ace/templates:/usr/local/lib/brain-tools/profiles/ace/templates"
       -p 7779:7779
       -p 7780:7780
       -e BRAIN_DEV=1
@@ -64,7 +64,7 @@ tasks:
       -v {{.VOL_CODESERVER_UI}}:/home/coder/.local/share/code-server
       -v {{.VOL_ZSH}}:/home/coder/.zsh-data
       -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
-      -v "{{.ROOT_DIR}}/zk/templates:/usr/local/lib/brain-tools/zk/templates"
+      -v "{{.ROOT_DIR}}/profiles/ace/templates:/usr/local/lib/brain-tools/profiles/ace/templates"
       -p 7778:7778
       -p 7779:7779
       -p 7780:7780
@@ -93,8 +93,8 @@ tasks:
   sync-skills:
     desc: Copy skills live into the running container (run /reload in Claude Code after)
     cmds:
-      - docker cp skills/. {{.CONTAINER}}:/home/coder/.claude/skills/
-      - docker cp brain-skills/. {{.CONTAINER}}:/home/coder/.claude/skills/
+      - docker cp profiles/ace/skills/global/. {{.CONTAINER}}:/home/coder/.claude/skills/
+      - docker cp profiles/ace/skills/vault/. {{.CONTAINER}}:/home/coder/.claude/skills/
       - echo "Skills synced — run /reload in Claude Code."
 
   sync:
@@ -102,7 +102,7 @@ tasks:
     cmds:
       - task: sync-skills
       - docker cp tools/lib/. {{.CONTAINER}}:/usr/local/lib/brain-tools/lib/
-      - docker cp zk/templates/. {{.CONTAINER}}:/usr/local/lib/brain-tools/zk/templates/
+      - docker cp profiles/ace/templates/. {{.CONTAINER}}:/usr/local/lib/brain-tools/profiles/ace/templates/
       - echo "Full sync complete."
 
   test:
@@ -112,6 +112,8 @@ tasks:
       -v "{{.ROOT_DIR}}/tests:/usr/local/lib/brain-tools/tests"
       -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
       -v "{{.ROOT_DIR}}/tools/brain-init:/usr/local/lib/brain-tools/brain-init"
+      -v "{{.ROOT_DIR}}/tools/brain-profile:/usr/local/lib/brain-tools/brain-profile"
+      -v "{{.ROOT_DIR}}/tools/setup.sh:/usr/local/lib/brain-tools/setup.sh"
       -v "{{.ROOT_DIR}}/profiles:/usr/local/lib/brain-tools/profiles"
       -v "{{.ROOT_DIR}}/pyproject.toml:/usr/local/lib/brain-tools/pyproject.toml"
       -w /usr/local/lib/brain-tools

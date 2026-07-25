@@ -2,8 +2,10 @@
 
 There are two tiers of skills in the second-brain:
 
-- **Global** (`skills/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only. Installed via the Claude Code plugin.
-- **Brain-local** (`brain-skills/`) — auto-installed by `brain-init` into `<brain>/.claude/skills/`. Load when Claude Code is opened at the brain root. Use MCP for semantic search and direct filesystem tools for file I/O.
+- **Global** (`profiles/<name>/skills/global/`) — for Claude Code on the host machine, from any project directory. Use MCP tools only. Installed via the Claude Code plugin.
+- **Brain-local** (`profiles/<name>/skills/vault/`) — auto-installed by `brain-init` into `<brain>/.claude/skills/`. Load when Claude Code is opened at the brain root. Use MCP for semantic search and direct filesystem tools for file I/O.
+
+Both tiers live in the active profile (the bundled default is `profiles/ace/`); editing skills means editing them under `profiles/ace/skills/{global,vault}/`.
 
 ## Global skills (host install via plugin)
 
@@ -53,4 +55,4 @@ cd skills && for d in brain-*/; do zip -r "${d%/}.zip" "$d"; done
 - **Claude Desktop:** Settings → Customize → Skills → upload each `.zip`
 - **claude.ai:** Open a Project → Project settings → Skills → upload each `.zip`
 
-See [`skills/README.md`](../skills/README.md) for details on what each skill does.
+Each skill's own `SKILL.md` under `profiles/ace/skills/{global,vault}/` describes what it does.

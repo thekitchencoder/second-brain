@@ -177,7 +177,7 @@ def test_emit_toml_roundtrips_zk_shape():
 
 def _profile(name, plugin_name, marker):
     return Profile(name=name, folders=["X"], fields=[], global_skills=[],
-                   vault_skills=[], plugin=Plugin(plugin_name, "a", marker),
+                   vault_skills=[], plugin=Plugin(plugin_name, "a", marker, plugin_name),
                    zk={}, auth=Auth("none"), origin=None)
 
 
@@ -199,3 +199,13 @@ def test_check_collisions_marker():
     dup = _profile("other", "other-plugin", "brain")
     errors = check_collisions(a, [dup])
     assert any("marker 'brain'" in e for e in errors)
+
+
+def test_check_collisions_mcp_server():
+    # Two profiles whose mcp_server names clash (but plugin name/marker differ).
+    a = Profile(name="ace", folders=["X"], fields=[], global_skills=[], vault_skills=[],
+                plugin=Plugin("second-brain", "a", "brain", "brain"), zk={}, auth=Auth("none"), origin=None)
+    dup = Profile(name="other", folders=["X"], fields=[], global_skills=[], vault_skills=[],
+                  plugin=Plugin("other-plugin", "a", "other", "brain"), zk={}, auth=Auth("none"), origin=None)
+    errors = check_collisions(a, [dup])
+    assert any("mcp server 'brain'" in e.lower() for e in errors)

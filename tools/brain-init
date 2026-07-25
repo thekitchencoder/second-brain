@@ -36,7 +36,7 @@ _VSCODE_SOURCE_CANDIDATES = [
 ]
 
 sys.path.insert(0, _SCRIPT_DIR)
-from lib.profile import load_profile, validate_profile, check_collisions  # noqa: E402
+from lib.profile import load_profile, validate_profile, check_collisions, ProfileError  # noqa: E402
 
 _PROFILE_SOURCE_CANDIDATES = [
     "/usr/local/lib/brain-tools/profiles/ace",       # inside container
@@ -45,6 +45,36 @@ _PROFILE_SOURCE_CANDIDATES = [
 
 _PROFILE = None
 _PROFILE_DIR = None
+_PROFILE_REPO = None  # set from --profile-repo in __main__
+
+
+def _profile_source():
+    """Custom profile source: --profile-repo, else BRAIN_PROFILE_REPO, else None."""
+    return _PROFILE_REPO or os.environ.get("BRAIN_PROFILE_REPO") or None
+
+
+def _looks_like_url(source):
+    # git URL forms: scheme://…, or scp-like user@host:path. Not an existing local path.
+    return "://" in source or (":" in source and not os.path.exists(source))
+
+
+def _seed_profile_dir(source, profile_dir):
+    """Clone (git repo / URL) or copy (plain dir) `source` into `profile_dir`."""
+    is_local = os.path.exists(source)
+    is_git_repo = is_local and os.path.isdir(os.path.join(source, ".git"))
+    if is_git_repo or _looks_like_url(source) or not is_local:
+        try:
+            subprocess.run(["git", "clone", "--depth", "1", source, profile_dir],
+                           check=True, capture_output=True, text=True)
+        except FileNotFoundError:
+            raise RuntimeError("git is not installed or not on PATH")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"git clone of profile '{source}' failed: {e.stderr.strip()}")
+        print(f"  Cloned profile from {source}")
+    else:
+        shutil.copytree(source, profile_dir, dirs_exist_ok=True)
+        print(f"  Copied profile from {source}")
+
 
 # Engine-owned zk infrastructure (container paths + structural excludes).
 # Convention keys (filename, template, author, filter) come from the profile.
@@ -65,19 +95,43 @@ def _find_source(candidates):
 
 
 def resolve_profile(brain_path):
-    """Load <brain>/.brain profile, seeding from the bundled ace profile if absent."""
+    """Load <brain>/.brain profile, seeding it on first init.
+
+    Source precedence when .brain/ is absent:
+      1. a custom source (--profile-repo / BRAIN_PROFILE_REPO): clone or copy
+      2. the bundled ace profile: copy (offline default)
+    """
     profile_dir = os.path.join(brain_path, ".brain")
+    freshly_seeded = False
     if not os.path.isfile(os.path.join(profile_dir, "profile.toml")):
-        source = _find_source(_PROFILE_SOURCE_CANDIDATES)
-        if source is None:
-            print("Error: no profile at <brain>/.brain and no bundled ace profile found.",
-                  file=sys.stderr)
-            sys.exit(1)
-        shutil.copytree(source, profile_dir, dirs_exist_ok=True)
-        print(f"  Seeded .brain/ from ace profile")
-    profile = load_profile(profile_dir)
-    errors = validate_profile(profile, profile_dir)
+        source = _profile_source()
+        if source:
+            try:
+                _seed_profile_dir(source, profile_dir)
+            except RuntimeError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            bundled = _find_source(_PROFILE_SOURCE_CANDIDATES)
+            if bundled is None:
+                print("Error: no profile at <brain>/.brain and no bundled ace profile found.",
+                      file=sys.stderr)
+                sys.exit(1)
+            shutil.copytree(bundled, profile_dir, dirs_exist_ok=True)
+            print("  Seeded .brain/ from bundled ace profile")
+        freshly_seeded = True
+    try:
+        profile = load_profile(profile_dir)
+        errors = validate_profile(profile, profile_dir)
+    except ProfileError as e:
+        if freshly_seeded:
+            shutil.rmtree(profile_dir, ignore_errors=True)
+        source = _profile_source() or "bundled ace"
+        print(f"Error: profile at '{source}' is not a valid brain profile: {e}", file=sys.stderr)
+        sys.exit(1)
     if errors:
+        if freshly_seeded:
+            shutil.rmtree(profile_dir, ignore_errors=True)
         print("Error: profile is invalid:", file=sys.stderr)
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
@@ -338,17 +392,20 @@ def init_core(brain_path):
 
     # Copy templates from the profile, adding any not already present.
     src_templates = os.path.join(_PROFILE_DIR, "templates")
-    new_templates = []
-    for name in sorted(os.listdir(src_templates)):
-        src_file = os.path.join(src_templates, name)
-        dst_file = os.path.join(templates_dest, name)
-        if os.path.isfile(src_file) and not os.path.exists(dst_file):
-            shutil.copy2(src_file, dst_file)
-            new_templates.append(name)
-    if new_templates:
-        print(f"  Added {len(new_templates)} template(s): {', '.join(new_templates)}")
+    if os.path.isdir(src_templates):
+        new_templates = []
+        for name in sorted(os.listdir(src_templates)):
+            src_file = os.path.join(src_templates, name)
+            dst_file = os.path.join(templates_dest, name)
+            if os.path.isfile(src_file) and not os.path.exists(dst_file):
+                shutil.copy2(src_file, dst_file)
+                new_templates.append(name)
+        if new_templates:
+            print(f"  Added {len(new_templates)} template(s): {', '.join(new_templates)}")
+        else:
+            print("  Templates up to date")
     else:
-        print("  Templates up to date")
+        print("  Profile ships no templates/ — skipping")
 
     ai_dest = os.path.join(brain_path, ".ai")
     os.makedirs(ai_dest, exist_ok=True)
@@ -554,6 +611,28 @@ def generate_env(brain_path, config):
     print(f"  Saved .env")
 
 
+def ensure_brain_gitignore(brain_path):
+    """Ensure the brain ignores engine-managed dirs (idempotent, append-only)."""
+    gi_path = os.path.join(brain_path, ".gitignore")
+    wanted = [".ai/", ".zk/", ".brain/.git/"]
+    existing = ""
+    if os.path.isfile(gi_path):
+        with open(gi_path, "r", encoding="utf-8") as f:
+            existing = f.read()
+    have = set(line.strip() for line in existing.splitlines())
+    missing = [e for e in wanted if e not in have]
+    if not missing:
+        return
+    with open(gi_path, "a", encoding="utf-8") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        if not existing:
+            f.write("# Managed by brain-init — engine-owned dirs\n")
+        for e in missing:
+            f.write(e + "\n")
+    print(f"  Updated .gitignore ({', '.join(missing)})")
+
+
 # ---------------------------------------------------------------------------
 # Presets for environment configuration
 # ---------------------------------------------------------------------------
@@ -620,6 +699,7 @@ def run_wizard(brain_path):
     # Step 1: Core init (always)
     print("[1/5] Initialising brain tools...")
     init_core(brain_path)
+    ensure_brain_gitignore(brain_path)
     init_vault_skills(brain_path)
     stage_brain_plugin(brain_path)
     print()
@@ -830,6 +910,7 @@ def run_auto(brain_path):
     _PROFILE, _PROFILE_DIR = resolve_profile(brain_path)
     print("brain-init: auto-initialising vault...")
     init_core(brain_path)
+    ensure_brain_gitignore(brain_path)
     init_profile_folders(brain_path, _PROFILE)
     init_vault_skills(brain_path)
     stage_brain_plugin(brain_path)
@@ -841,11 +922,24 @@ def run_auto(brain_path):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    flags = [a for a in sys.argv[1:] if a.startswith("-")]
-
-    auto = "--auto" in flags
-    brain_path = args[0] if args else os.environ.get("BRAIN_PATH", "/brain")
+    argv = sys.argv[1:]
+    auto = "--auto" in argv
+    positionals = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--profile-repo":
+            val = argv[i + 1] if i + 1 < len(argv) else None
+            if val is None or val.startswith("-"):
+                print("Error: --profile-repo requires a value", file=sys.stderr)
+                sys.exit(1)
+            _PROFILE_REPO = val
+            i += 2
+            continue
+        if not tok.startswith("-"):
+            positionals.append(tok)
+        i += 1
+    brain_path = positionals[0] if positionals else os.environ.get("BRAIN_PATH", "/brain")
 
     if not os.path.isdir(brain_path):
         print(f"Error: vault path does not exist: {brain_path}", file=sys.stderr)
