@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """brain-init: initialise a second-brain for use with brain tools.
 
-Copies .zk config and templates, creates .ai directory, copies .vscode
-workspace config, installs vault-level skills, and optionally creates the
-ACE folder structure and generates a .env configuration file.
+Composes .zk config and templates from the vault's profile, creates .ai
+directory, copies .vscode workspace config, installs vault-level skills,
+and optionally creates the profile's folder structure and generates a
+.env configuration file.
 
 Idempotent — safe to run multiple times.
 
@@ -29,45 +30,30 @@ import urllib.error
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 
-_ZK_SOURCE_CANDIDATES = [
-    os.path.join(_REPO_ROOT, "zk"),             # local dev
-    "/usr/local/lib/brain-tools/zk",            # inside container
-]
 _VSCODE_SOURCE_CANDIDATES = [
     os.path.join(_REPO_ROOT, "vscode"),         # local dev
     "/usr/local/lib/brain-tools/vscode",        # inside container
 ]
-_SKILLS_SOURCE_CANDIDATES = [
-    "/usr/local/lib/brain-tools/claude-seed/skills",  # inside container
-    os.path.join(_REPO_ROOT, "brain-skills"),         # local dev (vault-level)
-]
-_GLOBAL_SKILLS_SOURCE_CANDIDATES = [
-    "/usr/local/lib/brain-tools/claude-seed/skills",  # container (both tiers merged)
-    os.path.join(_REPO_ROOT, "skills"),               # local dev (global tier)
-]
-_CLAUDE_TEMPLATES_CANDIDATES = [
-    "/usr/local/lib/brain-tools/claude",              # inside container
-    os.path.join(_REPO_ROOT, "claude"),               # local dev
-]
-_HOOKS_SOURCE_CANDIDATES = [
-    "/usr/local/lib/brain-tools/hooks",               # inside container
-    os.path.join(_REPO_ROOT, "hooks"),                # local dev
+
+sys.path.insert(0, _SCRIPT_DIR)
+from lib.profile import load_profile, validate_profile, check_collisions  # noqa: E402
+
+_PROFILE_SOURCE_CANDIDATES = [
+    "/usr/local/lib/brain-tools/profiles/ace",       # inside container
+    os.path.join(_REPO_ROOT, "profiles", "ace"),     # local dev
 ]
 
-# Vault skills need direct filesystem access (mv, Glob date patterns, Edit).
-# Global skills are MCP-only — they work from any Claude Code session with the brain plugin.
-_VAULT_SKILL_NAMES = {
-    "brain-daily", "brain-extract", "brain-hygiene",
-    "brain-rename", "brain-reorganise",
+_PROFILE = None
+_PROFILE_DIR = None
+
+# Engine-owned zk infrastructure (container paths + structural excludes).
+# Convention keys (filename, template, author, filter) come from the profile.
+_ZK_INFRA = {
+    "notebook": {"exclude": ["templates/"]},
+    "note": {"extension": "md", "id-charset": "alphanum", "id-length": 0},
+    "tool": {"pager": "cat",
+             "fzf-preview": "bat --color=always --style=plain --theme=TwoDark /brain/{}"},
 }
-
-_GLOBAL_SKILL_NAMES = {
-    "brain-capture", "brain-connect", "brain-context",
-    "brain-create-effort", "brain-effort", "brain-project",
-    "brain-save", "brain-setup", "brain-surface", "brain-triage",
-}
-
-ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,6 +62,27 @@ ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
 def _find_source(candidates):
     """Return the first existing directory from candidates, or None."""
     return next((p for p in candidates if os.path.isdir(p)), None)
+
+
+def resolve_profile(brain_path):
+    """Load <brain>/.brain profile, seeding from the bundled ace profile if absent."""
+    profile_dir = os.path.join(brain_path, ".brain")
+    if not os.path.isfile(os.path.join(profile_dir, "profile.toml")):
+        source = _find_source(_PROFILE_SOURCE_CANDIDATES)
+        if source is None:
+            print("Error: no profile at <brain>/.brain and no bundled ace profile found.",
+                  file=sys.stderr)
+            sys.exit(1)
+        shutil.copytree(source, profile_dir, dirs_exist_ok=True)
+        print(f"  Seeded .brain/ from ace profile")
+    profile = load_profile(profile_dir)
+    errors = validate_profile(profile, profile_dir)
+    if errors:
+        print("Error: profile is invalid:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        sys.exit(1)
+    return profile, profile_dir
 
 
 def _is_interactive():
@@ -316,89 +323,76 @@ def _count_md_files(path):
 # ---------------------------------------------------------------------------
 
 def init_core(brain_path):
-    """Copy .zk, create .ai, copy .vscode — the original brain-init logic."""
-    zk_source = _find_source(_ZK_SOURCE_CANDIDATES)
-    if zk_source is None:
-        print("Error: could not find zk config source directory.", file=sys.stderr)
-        sys.exit(1)
+    """Create .zk (composed config + profile templates), .ai, and .vscode."""
+    from lib.profile import compose_zk_config, emit_toml
 
     zk_dest = os.path.join(brain_path, ".zk")
-    ai_dest = os.path.join(brain_path, ".ai")
+    templates_dest = os.path.join(zk_dest, "templates")
+    os.makedirs(templates_dest, exist_ok=True)
 
-    if os.path.isdir(zk_dest):
-        # Sync new templates into existing .zk/templates/ without overwriting user edits
-        src_templates = os.path.join(zk_source, "templates")
-        dst_templates = os.path.join(zk_dest, "templates")
-        if os.path.isdir(src_templates) and os.path.isdir(dst_templates):
-            new_templates = []
-            for name in os.listdir(src_templates):
-                src_file = os.path.join(src_templates, name)
-                dst_file = os.path.join(dst_templates, name)
-                if os.path.isfile(src_file) and not os.path.exists(dst_file):
-                    shutil.copy2(src_file, dst_file)
-                    new_templates.append(name)
-            if new_templates:
-                print(f"  .zk/ exists — added {len(new_templates)} new template(s): {', '.join(sorted(new_templates))}")
-            else:
-                print(f"  .zk/ already exists, templates up to date.")
-        else:
-            print(f"  .zk/ already exists, skipping.")
+    # Compose and write .zk/config.toml (infra + profile conventions).
+    config = compose_zk_config(_ZK_INFRA, _PROFILE.zk)
+    with open(os.path.join(zk_dest, "config.toml"), "w") as f:
+        f.write(emit_toml(config))
+    print("  Wrote .zk/config.toml (infra + profile conventions)")
+
+    # Copy templates from the profile, adding any not already present.
+    src_templates = os.path.join(_PROFILE_DIR, "templates")
+    new_templates = []
+    for name in sorted(os.listdir(src_templates)):
+        src_file = os.path.join(src_templates, name)
+        dst_file = os.path.join(templates_dest, name)
+        if os.path.isfile(src_file) and not os.path.exists(dst_file):
+            shutil.copy2(src_file, dst_file)
+            new_templates.append(name)
+    if new_templates:
+        print(f"  Added {len(new_templates)} template(s): {', '.join(new_templates)}")
     else:
-        shutil.copytree(zk_source, zk_dest)
-        print(f"  Created .zk/ (config + {len(os.listdir(os.path.join(zk_dest, 'templates')))} templates)")
+        print("  Templates up to date")
 
+    ai_dest = os.path.join(brain_path, ".ai")
     os.makedirs(ai_dest, exist_ok=True)
-    print(f"  Ensured .ai/ exists")
+    print("  Ensured .ai/ exists")
 
     vscode_source = _find_source(_VSCODE_SOURCE_CANDIDATES)
     if vscode_source is not None:
         vscode_dest = os.path.join(brain_path, ".vscode")
-        if os.path.isdir(vscode_dest):
-            print(f"  .vscode/ already exists, skipping.")
-        else:
+        if not os.path.isdir(vscode_dest):
             shutil.copytree(vscode_source, vscode_dest)
-            print(f"  Created .vscode/ (workspace config)")
+            print("  Created .vscode/ (workspace config)")
 
 
 def init_vault_skills(brain_path):
-    """Copy vault-level skills and CLAUDE.md into <vault>/.claude/."""
-    skills_source = _find_source(_SKILLS_SOURCE_CANDIDATES)
-    if skills_source is None:
-        print("  No skills source found, skipping vault skills.")
-        return
-
+    """Copy the profile's vault skills into <vault>/.claude/skills/."""
+    skills_source = os.path.join(_PROFILE_DIR, "skills", "vault")
     dest_dir = os.path.join(brain_path, ".claude", "skills")
     os.makedirs(dest_dir, exist_ok=True)
-
     updated = []
-    for name in sorted(_VAULT_SKILL_NAMES):
+    for name in _PROFILE.vault_skills:
         src = os.path.join(skills_source, name)
         dst = os.path.join(dest_dir, name)
         if not os.path.isdir(src):
             continue
-        # Always overwrite — these are image-provided, not user-edited
+        # Always overwrite — these are profile-provided, not user-edited
         if os.path.isdir(dst):
             shutil.rmtree(dst)
         elif os.path.islink(dst):
             os.remove(dst)
         shutil.copytree(src, dst)
         updated.append(name)
-
     if updated:
         print(f"  Updated {len(updated)} vault skills in .claude/skills/")
 
-    # Seed vault-level CLAUDE.md (filesystem extension for vault sessions)
-    claude_templates = _find_source(_CLAUDE_TEMPLATES_CANDIDATES)
-    if claude_templates:
-        vault_claude_src = os.path.join(claude_templates, "vault-claude.md")
-        vault_claude_dst = os.path.join(brain_path, ".claude", "CLAUDE.md")
-        if os.path.isfile(vault_claude_src) and not os.path.isfile(vault_claude_dst):
-            shutil.copy2(vault_claude_src, vault_claude_dst)
-            print(f"  Seeded .claude/CLAUDE.md (vault-level instructions)")
+    # Seed vault-level CLAUDE.md from the profile.
+    vault_claude_src = os.path.join(_PROFILE_DIR, "claude", "vault-claude.md")
+    vault_claude_dst = os.path.join(brain_path, ".claude", "CLAUDE.md")
+    if os.path.isfile(vault_claude_src) and not os.path.isfile(vault_claude_dst):
+        shutil.copy2(vault_claude_src, vault_claude_dst)
+        print("  Seeded .claude/CLAUDE.md")
 
 
 def stage_brain_plugin(brain_path):
-    """Stage a Claude Code plugin at <vault>/.ai/brain-plugin/ for host installation.
+    """Stage a Claude Code plugin at <vault>/.ai/brain-plugin/ using profile identity.
 
     The marketplace manifest lives one level up at <vault>/.ai/.claude-plugin/marketplace.json
     so the source path "./brain-plugin" is a valid relative reference.
@@ -407,9 +401,8 @@ def stage_brain_plugin(brain_path):
         claude plugin marketplace add <vault>/.ai
         claude plugin install second-brain
     """
-    skills_source = _find_source(_GLOBAL_SKILLS_SOURCE_CANDIDATES)
-    if skills_source is None:
-        return
+    skills_source = os.path.join(_PROFILE_DIR, "skills", "global")
+    plugin = _PROFILE.plugin
 
     ai_dir = os.path.join(brain_path, ".ai")
     plugin_dir = os.path.join(ai_dir, "brain-plugin")
@@ -421,10 +414,10 @@ def stage_brain_plugin(brain_path):
 
     # Write plugin manifest
     manifest = {
-        "name": "second-brain",
+        "name": plugin.name,
         "version": "1.0.0",
-        "description": "Global brain skills and MCP server for second-brain",
-        "author": {"name": "kitchencoder"},
+        "description": f"Global brain skills and MCP server for {plugin.name}",
+        "author": {"name": plugin.author},
     }
     manifest_path = os.path.join(manifest_dir, "plugin.json")
     with open(manifest_path, "w") as f:
@@ -434,14 +427,14 @@ def stage_brain_plugin(brain_path):
     # Write marketplace manifest at .ai/.claude-plugin/marketplace.json
     # so "./brain-plugin" is a valid relative path to the plugin directory.
     marketplace = {
-        "name": "second-brain",
-        "owner": {"name": "kitchencoder"},
+        "name": plugin.name,
+        "owner": {"name": plugin.author},
         "plugins": [
             {
-                "name": "second-brain",
+                "name": plugin.name,
                 "source": "./brain-plugin",
-                "description": "Global brain skills and MCP server for second-brain",
-                "author": {"name": "kitchencoder"},
+                "description": f"Global brain skills and MCP server for {plugin.name}",
+                "author": {"name": plugin.author},
             }
         ],
     }
@@ -455,7 +448,7 @@ def stage_brain_plugin(brain_path):
     # Write MCP server config (HTTP transport)
     mcp_config = {
         "mcpServers": {
-            "brain": {
+            plugin.mcp_server: {
                 "type": "http",
                 "url": "http://127.0.0.1:7780/mcp/",
             }
@@ -468,7 +461,7 @@ def stage_brain_plugin(brain_path):
 
     # Copy global skills into plugin
     staged = []
-    for name in sorted(_GLOBAL_SKILL_NAMES):
+    for name in _PROFILE.global_skills:
         src = os.path.join(skills_source, name)
         dst = os.path.join(skills_dir, name)
         if not os.path.isdir(src):
@@ -480,16 +473,14 @@ def stage_brain_plugin(brain_path):
         staged.append(name)
 
     # Copy plugin-level CLAUDE.md (MCP-only guidance for host sessions)
-    claude_templates = _find_source(_CLAUDE_TEMPLATES_CANDIDATES)
-    if claude_templates:
-        plugin_claude_src = os.path.join(claude_templates, "plugin-claude.md")
-        plugin_claude_dst = os.path.join(plugin_dir, "CLAUDE.md")
-        if os.path.isfile(plugin_claude_src):
-            shutil.copy2(plugin_claude_src, plugin_claude_dst)
+    plugin_claude_src = os.path.join(_PROFILE_DIR, "claude", "plugin-claude.md")
+    plugin_claude_dst = os.path.join(plugin_dir, "CLAUDE.md")
+    if os.path.isfile(plugin_claude_src):
+        shutil.copy2(plugin_claude_src, plugin_claude_dst)
 
     # Copy hooks into plugin
-    hooks_source = _find_source(_HOOKS_SOURCE_CANDIDATES)
-    if hooks_source:
+    hooks_source = os.path.join(_PROFILE_DIR, "hooks")
+    if os.path.isdir(hooks_source):
         hooks_dst = os.path.join(plugin_dir, "hooks")
         if os.path.isdir(hooks_dst):
             shutil.rmtree(hooks_dst)
@@ -504,22 +495,15 @@ def stage_brain_plugin(brain_path):
         print(f"  Staged brain plugin to .ai/brain-plugin/ ({len(staged)} skills + MCP config + hooks)")
 
 
-def init_ace_folders(brain_path):
-    """Create the ACE folder structure with .keep files."""
-    created = []
-    for folder in ACE_FOLDERS:
-        folder_path = os.path.join(brain_path, folder)
-        if not os.path.isdir(folder_path):
-            os.makedirs(folder_path)
-            # .keep ensures the folder is preserved in git
-            keep = os.path.join(folder_path, ".keep")
-            with open(keep, "w") as f:
-                pass
-            created.append(folder)
-    if created:
-        print(f"  Created folders: {', '.join(created)}")
-    else:
-        print(f"  All folders already exist.")
+def init_profile_folders(brain_path, profile):
+    """Create the profile's folder structure (with .keep so empty dirs survive git)."""
+    for folder in profile.folders:
+        fpath = os.path.join(brain_path, folder)
+        os.makedirs(fpath, exist_ok=True)
+        keep = os.path.join(fpath, ".keep")
+        if not os.path.exists(keep):
+            open(keep, "a").close()
+    print(f"  Ensured folders: {', '.join(profile.folders)}")
 
 
 def generate_env(brain_path, config):
@@ -616,6 +600,8 @@ PRESETS = {
 
 def run_wizard(brain_path):
     """Interactive setup wizard — guides user through configuration."""
+    global _PROFILE, _PROFILE_DIR
+    _PROFILE, _PROFILE_DIR = resolve_profile(brain_path)
     md_count = _count_md_files(brain_path)
     is_fresh = md_count == 0 and not os.path.isdir(os.path.join(brain_path, ".zk"))
 
@@ -638,21 +624,21 @@ def run_wizard(brain_path):
     stage_brain_plugin(brain_path)
     print()
 
-    # Step 2: ACE folders
+    # Step 2: Profile folders
     print("[2/5] Folder structure")
-    existing = [f for f in ACE_FOLDERS if os.path.isdir(os.path.join(brain_path, f))]
-    missing = [f for f in ACE_FOLDERS if f not in existing]
+    existing = [f for f in _PROFILE.folders if os.path.isdir(os.path.join(brain_path, f))]
+    missing = [f for f in _PROFILE.folders if f not in existing]
 
     if not missing:
-        print(f"  All ACE folders already exist: {', '.join(ACE_FOLDERS)}")
+        print(f"  All folders already exist: {', '.join(_PROFILE.folders)}")
     else:
         default = "y" if is_fresh else "n"
-        print(f"  The ACE structure organises notes into: {', '.join(ACE_FOLDERS)}")
+        print(f"  The {_PROFILE.name} structure organises notes into: {', '.join(_PROFILE.folders)}")
         if existing:
             print(f"  Already exist: {', '.join(existing)}")
             print(f"  Missing: {', '.join(missing)}")
         if _ask("  Create folder structure?", default=default):
-            init_ace_folders(brain_path)
+            init_profile_folders(brain_path, _PROFILE)
         else:
             print("  Skipped.")
     print()
@@ -839,9 +825,12 @@ def _print_welcome(brain_path, host_path=""):
 # ---------------------------------------------------------------------------
 
 def run_auto(brain_path):
-    """Non-interactive init: core setup + vault skills + stage global skills."""
+    """Non-interactive init: profile resolve + core setup + vault skills + stage global skills."""
+    global _PROFILE, _PROFILE_DIR
+    _PROFILE, _PROFILE_DIR = resolve_profile(brain_path)
     print("brain-init: auto-initialising vault...")
     init_core(brain_path)
+    init_profile_folders(brain_path, _PROFILE)
     init_vault_skills(brain_path)
     stage_brain_plugin(brain_path)
     print("brain-init: done.")

@@ -1,0 +1,42 @@
+name = "ace"
+
+folders = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
+
+[plugin]
+name       = "second-brain"
+author     = "kitchencoder"
+marker     = "brain"
+mcp_server = "brain"
+
+[fields.status]
+kind  = "scalar"
+label = "Note status"
+
+[fields.type]
+kind  = "scalar"
+label = "Note type"
+
+[fields.intensity]
+kind       = "scalar"
+label      = "Effort intensity"
+query_desc = "Filter by effort intensity (focus, ongoing, simmering)."
+
+[fields.effort]
+kind       = "scalar"
+label      = "Effort"
+query_desc = "Filter by effort field in frontmatter."
+
+[skills]
+global = ["brain-capture", "brain-connect", "brain-context", "brain-create-effort",
+          "brain-distil", "brain-effort", "brain-project", "brain-save", "brain-setup",
+          "brain-surface", "brain-triage"]
+vault  = ["brain-daily", "brain-extract", "brain-hygiene", "brain-rename", "brain-reorganise"]
+
+[zk]
+filename = "{{slug title}}"
+default_template = "default.md"
+author = "Chris"
+recents_filter = "--sort created- --created-after '2 weeks ago'"
+
+[auth]
+mode = "none"

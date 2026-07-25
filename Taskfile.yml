@@ -111,6 +111,8 @@ tasks:
       docker run --rm --entrypoint python3
       -v "{{.ROOT_DIR}}/tests:/usr/local/lib/brain-tools/tests"
       -v "{{.ROOT_DIR}}/tools/lib:/usr/local/lib/brain-tools/lib"
+      -v "{{.ROOT_DIR}}/tools/brain-init:/usr/local/lib/brain-tools/brain-init"
+      -v "{{.ROOT_DIR}}/profiles:/usr/local/lib/brain-tools/profiles"
       -v "{{.ROOT_DIR}}/pyproject.toml:/usr/local/lib/brain-tools/pyproject.toml"
       -w /usr/local/lib/brain-tools
       {{.IMAGE}}
