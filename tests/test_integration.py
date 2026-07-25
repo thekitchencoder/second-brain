@@ -100,7 +100,7 @@ def test_query_by_tag_returns_epistemic_lens_documents(brain_container):
         brain_container,
         "python3 -c \""
         "from brain_mcp_server import handle_brain_query; "
-        "print(handle_brain_query(tag='epistemic-lens', status=None, note_type=None, brain_path='/brain'))"
+        "print(handle_brain_query(brain_path='/brain', tag='epistemic-lens'))"
         "\""
     )
     assert "context-co-dependent-confabulation" in result

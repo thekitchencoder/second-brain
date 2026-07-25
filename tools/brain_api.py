@@ -5,11 +5,12 @@ Sits between the MCP server and the filesystem, reuses the same handler
 functions, and adds structured responses + surgical edit support for a
 web UI with wiki-link navigation.
 """
+import json
 import os
 from enum import Enum
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -206,22 +207,32 @@ def search_notes(
     ]
 
 
+_STABLE_QUERY_PARAMS = {"tag", "created_after", "created_before", "where"}
+
+
 @app.get("/api/notes", response_model=list[str])
-def list_notes(
-    tag: Optional[str] = None,
-    status: Optional[str] = None,
-    type: Optional[str] = None,
-    intensity: Optional[str] = None,
-    effort: Optional[str] = None,
-    created_after: Optional[str] = None,
-    created_before: Optional[str] = None,
-):
+def list_notes(request: Request, tag: Optional[str] = None,
+               created_after: Optional[str] = None, created_before: Optional[str] = None,
+               where: Optional[str] = None):
     """List notes filtered by metadata (delegates to zk)."""
-    result = handle_brain_query(
-        tag=tag, status=status, note_type=type, brain_path=_cfg.brain_path,
-        intensity=intensity, effort=effort,
-        created_after=created_after, created_before=created_before,
-    )
+    profile = _cfg.load_profile()
+    field_names = {f.name for f in profile.fields}
+    allowed = _STABLE_QUERY_PARAMS | field_names
+    unknown = [k for k in request.query_params if k not in allowed]
+    if unknown:
+        raise HTTPException(400, f"Unknown filter field(s): {', '.join(sorted(unknown))}. "
+                                 f"Allowed: {', '.join(sorted(allowed))}")
+    fields = {k: v for k, v in request.query_params.items() if k in field_names}
+    try:
+        where_dict = json.loads(where) if where else None
+    except json.JSONDecodeError:
+        raise HTTPException(400, "where must be a JSON object")
+    if where_dict is not None:
+        if not isinstance(where_dict, dict) or not all(isinstance(v, str) for v in where_dict.values()):
+            raise HTTPException(400, "where must be a JSON object of string values")
+    result = handle_brain_query(_cfg.brain_path, tag=tag, fields=fields, where=where_dict,
+                                created_after=created_after, created_before=created_before,
+                                field_specs=profile.fields)
     if result.startswith("Invalid"):
         raise HTTPException(400, result)
     if result.startswith("No notes") or result.startswith("zk"):

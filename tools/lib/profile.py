@@ -13,6 +13,12 @@ class ProfileError(Exception):
     """Raised when a profile manifest is missing or malformed."""
 
 
+# Query params that are stable across every profile (tag, where, and the date-range
+# filters). A profile field sharing one of these names would shadow the built-in
+# parameter in the generated MCP/REST schema.
+_RESERVED_FIELD_NAMES = {"tag", "where", "created_after", "created_before"}
+
+
 @dataclass(frozen=True)
 class Field:
     name: str
@@ -101,6 +107,12 @@ def validate_profile(profile: Profile, profile_dir: str) -> list[str]:
 
     if not profile.folders:
         errors.append("profile.folders is empty — at least one folder required")
+
+    for f in profile.fields:
+        if f.name in _RESERVED_FIELD_NAMES:
+            errors.append(
+                f"field '{f.name}' collides with a reserved query parameter "
+                f"({', '.join(sorted(_RESERVED_FIELD_NAMES))})")
 
     default_template = profile.zk.get("default_template")
     if default_template:

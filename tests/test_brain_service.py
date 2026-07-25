@@ -31,6 +31,7 @@ from lib.brain import (
     handle_brain_write,
 )
 from lib.embeddings import EmbeddingError
+from lib.profile import Field
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -264,20 +265,20 @@ def test_handle_brain_backlinks_consistent_with_find_backlinks(tmp_path):
 
 
 def test_brain_query_rejects_invalid_tag(tmp_path):
-    result = handle_brain_query(tag="foo; bar", status=None, note_type=None, brain_path=str(tmp_path))
+    result = handle_brain_query(str(tmp_path), tag="foo; bar")
     assert "invalid" in result.lower()
 
 def test_brain_query_rejects_invalid_status(tmp_path):
-    result = handle_brain_query(tag=None, status="draft\ninjected", note_type=None, brain_path=str(tmp_path))
+    result = handle_brain_query(str(tmp_path), fields={"status": "draft\ninjected"})
     assert "invalid" in result.lower()
 
 def test_brain_query_rejects_invalid_type(tmp_path):
-    result = handle_brain_query(tag=None, status=None, note_type="../etc/passwd", brain_path=str(tmp_path))
+    result = handle_brain_query(str(tmp_path), fields={"type": "../etc/passwd"})
     assert "invalid" in result.lower()
 
 def test_brain_query_accepts_valid_params(tmp_path):
     # Should not fail on input validation (may fail on zk not found — that's fine)
-    result = handle_brain_query(tag="my-effort", status="draft", note_type="discovery", brain_path=str(tmp_path))
+    result = handle_brain_query(str(tmp_path), tag="my-effort", fields={"status": "draft", "type": "discovery"})
     assert "invalid" not in result.lower()
 
 
@@ -291,8 +292,7 @@ def _make_note(tmp_path, rel_path, frontmatter_str, body=""):
 def test_brain_query_intensity_filter(tmp_path):
     _make_note(tmp_path, "Efforts/a.md", "type: effort\nstatus: active\nintensity: focus")
     _make_note(tmp_path, "Efforts/b.md", "type: effort\nstatus: active\nintensity: simmering")
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), intensity="focus")
+    result = handle_brain_query(str(tmp_path), fields={"intensity": "focus"})
     assert "Efforts/a.md" in result
     assert "Efforts/b.md" not in result
 
@@ -300,8 +300,7 @@ def test_brain_query_intensity_filter(tmp_path):
 def test_brain_query_effort_filter(tmp_path):
     _make_note(tmp_path, "Cards/x.md", "type: note\neffort: walking-tracker")
     _make_note(tmp_path, "Cards/y.md", "type: note\neffort: homelab")
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), effort="walking-tracker")
+    result = handle_brain_query(str(tmp_path), fields={"effort": "walking-tracker"})
     assert "Cards/x.md" in result
     assert "Cards/y.md" not in result
 
@@ -309,8 +308,7 @@ def test_brain_query_effort_filter(tmp_path):
 def test_brain_query_created_after(tmp_path):
     _make_note(tmp_path, "Cards/old.md", "type: note\ncreated: 2026-01-01")
     _make_note(tmp_path, "Cards/new.md", "type: note\ncreated: 2026-04-10")
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), created_after="2026-03-01")
+    result = handle_brain_query(str(tmp_path), created_after="2026-03-01")
     assert "Cards/new.md" in result
     assert "Cards/old.md" not in result
 
@@ -318,8 +316,7 @@ def test_brain_query_created_after(tmp_path):
 def test_brain_query_created_before(tmp_path):
     _make_note(tmp_path, "Cards/old.md", "type: note\ncreated: 2026-01-01")
     _make_note(tmp_path, "Cards/new.md", "type: note\ncreated: 2026-04-10")
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), created_before="2026-02-01")
+    result = handle_brain_query(str(tmp_path), created_before="2026-02-01")
     assert "Cards/old.md" in result
     assert "Cards/new.md" not in result
 
@@ -328,8 +325,7 @@ def test_brain_query_created_date_range(tmp_path):
     _make_note(tmp_path, "Cards/a.md", "type: note\ncreated: 2026-01-01")
     _make_note(tmp_path, "Cards/b.md", "type: note\ncreated: 2026-03-15")
     _make_note(tmp_path, "Cards/c.md", "type: note\ncreated: 2026-05-01")
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path),
+    result = handle_brain_query(str(tmp_path),
                                 created_after="2026-02-01", created_before="2026-04-01")
     assert "Cards/b.md" in result
     assert "Cards/a.md" not in result
@@ -337,22 +333,19 @@ def test_brain_query_created_date_range(tmp_path):
 
 
 def test_brain_query_rejects_invalid_date_format(tmp_path):
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), created_after="April 10")
+    result = handle_brain_query(str(tmp_path), created_after="April 10")
     assert "invalid" in result.lower()
 
 
 def test_brain_query_rejects_invalid_intensity(tmp_path):
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), intensity="foo;bar")
+    result = handle_brain_query(str(tmp_path), fields={"intensity": "foo;bar"})
     assert "invalid" in result.lower()
 
 
 def test_brain_query_no_match_shows_existing_values(tmp_path):
     _make_note(tmp_path, "Efforts/a.md", "type: effort\nstatus: active\nintensity: focus")
     _make_note(tmp_path, "Efforts/b.md", "type: effort\nstatus: active\nintensity: simmering")
-    result = handle_brain_query(tag=None, status=None, note_type=None,
-                                brain_path=str(tmp_path), intensity="banana")
+    result = handle_brain_query(str(tmp_path), fields={"intensity": "banana"})
     assert "No notes matched" in result
     assert "focus" in result
     assert "simmering" in result
@@ -361,11 +354,90 @@ def test_brain_query_no_match_shows_existing_values(tmp_path):
 def test_brain_query_no_match_hint_for_type(tmp_path):
     _make_note(tmp_path, "Cards/a.md", "type: note\nstatus: draft")
     _make_note(tmp_path, "Efforts/b.md", "type: effort\nstatus: active")
-    result = handle_brain_query(tag=None, status=None, note_type="project",
-                                brain_path=str(tmp_path))
+    result = handle_brain_query(str(tmp_path), fields={"type": "project"})
     assert "No notes matched" in result
     assert "effort" in result
     assert "note" in result
+
+
+# ── brain_query generic field loop (Plan C, Seam 5) ────────────────────
+
+
+def _write_note(dirpath, name, frontmatter):
+    fm = "\n".join(f"{k}: {v}" for k, v in frontmatter.items())
+    (dirpath / name).write_text(f"---\n{fm}\n---\n# {name}\n")
+
+
+def test_query_scalar_equality(tmp_path):
+    _write_note(tmp_path, "a.md", {"type": "effort", "intensity": "focus"})
+    _write_note(tmp_path, "b.md", {"type": "effort", "intensity": "simmering"})
+    specs = [Field("intensity", "scalar", "Effort intensity")]
+    out = handle_brain_query(str(tmp_path), fields={"intensity": "focus"}, field_specs=specs)
+    assert "a.md" in out and "b.md" not in out
+
+
+def test_query_list_membership(tmp_path):
+    _write_note(tmp_path, "c.md", {"known_by": "[fenn, alba]"})
+    _write_note(tmp_path, "d.md", {"known_by": "[alba]"})
+    specs = [Field("known_by", "list", "Known by")]
+    out = handle_brain_query(str(tmp_path), fields={"known_by": "fenn"}, field_specs=specs)
+    assert "c.md" in out and "d.md" not in out
+
+
+def test_query_unset(tmp_path):
+    _write_note(tmp_path, "e.md", {"type": "note"})            # no status
+    _write_note(tmp_path, "f.md", {"type": "note", "status": "active"})
+    specs = [Field("status", "scalar", "Status")]
+    out = handle_brain_query(str(tmp_path), fields={"status": "unset"}, field_specs=specs)
+    assert "e.md" in out and "f.md" not in out
+
+
+def test_query_where_escape_hatch(tmp_path):
+    _write_note(tmp_path, "g.md", {"layer": "deep-canon"})
+    _write_note(tmp_path, "h.md", {"layer": "surface"})
+    out = handle_brain_query(str(tmp_path), where={"layer": "deep-canon"})  # no field_specs → scalar
+    assert "g.md" in out and "h.md" not in out
+
+
+def test_query_list_membership_matches_scalar_frontmatter(tmp_path):
+    """A hand-typed scalar (no brackets) for a list-kind field must still match —
+    coercing to a single-element list — otherwise a visibility field like known_by
+    silently fails closed for every hand-typed note (safety bug)."""
+    _write_note(tmp_path, "i.md", {"known_by": "fenn"})       # scalar, no brackets
+    _write_note(tmp_path, "j.md", {"known_by": "[fenn, alba]"})  # list form
+    _write_note(tmp_path, "k.md", {"known_by": "alba"})       # scalar, different value
+    specs = [Field("known_by", "list", "Known by")]
+    out = handle_brain_query(str(tmp_path), fields={"known_by": "fenn"}, field_specs=specs)
+    assert "i.md" in out
+    assert "j.md" in out
+    assert "k.md" not in out
+
+
+def test_query_where_fields_collision_rejected(tmp_path):
+    """A key present in both promoted fields and the where escape hatch must be
+    rejected rather than silently letting where win."""
+    _write_note(tmp_path, "m.md", {"status": "active"})
+    _write_note(tmp_path, "n.md", {"status": "done"})
+    out = handle_brain_query(
+        str(tmp_path), fields={"status": "active"}, where={"status": "done"}
+    )
+    assert out.startswith("Invalid")
+    assert "status" in out
+
+
+def test_query_where_key_rejects_unsafe_chars(tmp_path):
+    _write_note(tmp_path, "o.md", {"layer": "deep-canon"})
+    out = handle_brain_query(str(tmp_path), where={"bad key": "x"})
+    assert out.startswith("Invalid")
+
+
+def test_no_match_hint_enumerates_list_members(tmp_path):
+    _write_note(tmp_path, "p.md", {"known_by": "[fenn, alba]"})
+    specs = [Field("known_by", "list", "Known by")]
+    out = handle_brain_query(str(tmp_path), fields={"known_by": "zzz"}, field_specs=specs)
+    assert "No notes matched" in out
+    assert "fenn" in out
+    assert "alba" in out
 
 
 # ── EmbeddingError handling ───────────────────────────────────────────
@@ -531,3 +603,10 @@ def test_restore_conflict_returns_error(brain_with_note):
 def test_restore_rejects_path_not_in_trash(brain_with_note):
     result = handle_brain_restore("Cards/foo.md", str(brain_with_note))
     assert "Error" in result
+
+
+def test_no_match_hint_lists_values_for_any_field(tmp_path):
+    _write_note(tmp_path, "n.md", {"layer": "surface"})
+    out = handle_brain_query(str(tmp_path), where={"layer": "deep-canon"})
+    assert "No notes matched" in out
+    assert "layer" in out and "surface" in out   # existing values for the filtered field

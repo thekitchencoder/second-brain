@@ -1,5 +1,6 @@
 # tests/test_brain_mcp_server.py
 import sys
+import textwrap
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -70,6 +71,88 @@ def test_handle_brain_query_runs_zk(tmp_path):
             stdout="notes/foo.md\nnotes/bar.md\n",
             returncode=0
         )
-        result = handle_brain_query(tag="testing", status=None, note_type=None, brain_path=str(tmp_path))
+        result = handle_brain_query(str(tmp_path), tag="testing")
     assert "foo.md" in result
     assert "bar.md" in result
+
+
+def _make_brain_with_custom_field_profile(tmp_path):
+    """A brain whose .brain/profile.toml promotes a custom 'layer' field."""
+    brain_dir = tmp_path / "brain"
+    (brain_dir / ".brain").mkdir(parents=True)
+    (brain_dir / ".brain" / "profile.toml").write_text(textwrap.dedent('''
+        name = "custom"
+        folders = ["Zone"]
+        [plugin]
+        name = "custom-brain"
+        author = "kitchencoder"
+        marker = "custom"
+        [fields.layer]
+        kind = "scalar"
+        label = "layer"
+        query_desc = "Filter by layer (deep-canon, surface)."
+        [skills]
+        global = []
+        vault = []
+        [auth]
+        mode = "none"
+    '''))
+    return brain_dir
+
+
+@pytest.fixture
+def mcp_module_with_profile(monkeypatch, tmp_path):
+    """Import brain_mcp_server with BRAIN_PATH pointed at a brain whose profile
+    promotes a custom 'layer' field, re-loading modules so the module-level
+    Config() picks up the patched env var."""
+    import importlib
+    import sys as _sys
+
+    brain_dir = _make_brain_with_custom_field_profile(tmp_path)
+    monkeypatch.setenv("BRAIN_PATH", str(brain_dir))
+
+    import lib.config
+    importlib.reload(lib.config)
+
+    if "brain_mcp_server" in _sys.modules:
+        importlib.reload(_sys.modules["brain_mcp_server"])
+        mod = _sys.modules["brain_mcp_server"]
+    else:
+        import brain_mcp_server as mod
+
+    mod._cfg = lib.config.Config()
+    return mod
+
+
+def _list_tools(server):
+    """Invoke the registered ListToolsRequest handler and return list[Tool]."""
+    import asyncio
+    import mcp.types as types
+
+    handler = server.request_handlers[types.ListToolsRequest]
+    result = asyncio.run(handler(types.ListToolsRequest(method="tools/list")))
+    return result.root.tools
+
+
+def test_brain_query_schema_has_profile_fields(mcp_module_with_profile):
+    server = mcp_module_with_profile._build_server()
+    tools = _list_tools(server)
+    brain_query_tool = next(t for t in tools if t.name == "brain_query")
+    props = brain_query_tool.inputSchema["properties"]
+
+    assert "layer" in props
+    assert "where" in props
+    assert props["where"]["type"] == "object"
+    # Stable params still present
+    assert "tag" in props and "created_after" in props and "created_before" in props
+    # Old hardcoded ACE fields not baked in unless the profile declares them
+    assert "intensity" not in props
+
+
+def test_brain_query_schema_description_from_labels(mcp_module_with_profile):
+    server = mcp_module_with_profile._build_server()
+    tools = _list_tools(server)
+    brain_query_tool = next(t for t in tools if t.name == "brain_query")
+
+    assert "layer" in brain_query_tool.description
+    assert "intensity" not in brain_query_tool.description

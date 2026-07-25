@@ -1,5 +1,6 @@
 # tests/test_brain_api.py
 """Unit tests for the brain REST API."""
+import json
 import os
 import sys
 import textwrap
@@ -27,6 +28,37 @@ def brain_env(tmp_path):
     tpl_dir.mkdir(parents=True)
     (tpl_dir / "default.md").write_text("---\ntitle: {{title}}\n---\n")
     (tpl_dir / "project.md").write_text("---\ntitle: {{title}}\ntype: project\n---\n")
+
+    profile_dir = brain_dir / ".brain"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / "profile.toml").write_text(textwrap.dedent('''\
+        name = "ace"
+        folders = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]
+        [plugin]
+        name = "second-brain"
+        author = "kitchencoder"
+        marker = "brain"
+        mcp_server = "brain"
+        [fields.status]
+        kind = "scalar"
+        label = "Note status"
+        [fields.type]
+        kind = "scalar"
+        label = "Note type"
+        [fields.intensity]
+        kind = "scalar"
+        label = "Effort intensity"
+        query_desc = "Filter by effort intensity (focus, ongoing, simmering)."
+        [fields.effort]
+        kind = "scalar"
+        label = "Effort"
+        query_desc = "Filter by effort field in frontmatter."
+        [skills]
+        global = []
+        vault = []
+        [auth]
+        mode = "none"
+    '''))
 
     with patch.dict(os.environ, {"BRAIN_PATH": str(brain_dir)}):
         # Re-import to pick up patched env
@@ -309,6 +341,60 @@ def test_list_notes_invalid_param_returns_400(client):
         resp = client.get("/api/notes", params={"tag": "bad tag!"})
     assert resp.status_code == 400
     assert "Invalid tag" in resp.json()["detail"]
+
+
+def test_list_notes_filters_promoted_field(client, brain_env):
+    """GET /api/notes?intensity=focus returns only notes with intensity: focus."""
+    brain_dir, _ = brain_env
+    efforts = brain_dir / "Efforts"
+    efforts.mkdir(parents=True, exist_ok=True)
+    (efforts / "a.md").write_text("---\ntitle: A\nintensity: focus\n---\n\nBody A.\n")
+    (efforts / "b.md").write_text("---\ntitle: B\nintensity: simmering\n---\n\nBody B.\n")
+
+    resp = client.get("/api/notes", params={"intensity": "focus"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "Efforts/a.md" in data
+    assert "Efforts/b.md" not in data
+
+
+def test_list_notes_where_escape_hatch(client, brain_env):
+    """GET /api/notes?where={"layer":"deep-canon"} filters an un-promoted frontmatter key."""
+    brain_dir, _ = brain_env
+    atlas = brain_dir / "Atlas"
+    atlas.mkdir(parents=True, exist_ok=True)
+    (atlas / "deep.md").write_text("---\ntitle: Deep\nlayer: deep-canon\n---\n\nBody.\n")
+    (atlas / "surface.md").write_text("---\ntitle: Surface\nlayer: surface\n---\n\nBody.\n")
+
+    resp = client.get("/api/notes", params={"where": json.dumps({"layer": "deep-canon"})})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "Atlas/deep.md" in data
+    assert "Atlas/surface.md" not in data
+
+
+def test_list_notes_where_nonstring_value_returns_400(client):
+    """A non-string where value must fail loud (400), not crash the regex validator (500)."""
+    resp = client.get("/api/notes", params={"where": json.dumps({"count": 5})})
+    assert resp.status_code == 400
+
+
+def test_list_notes_where_non_object_json_returns_400(client):
+    """Valid JSON that isn't an object (e.g. a bare number) must fail loud (400), not 500 on .items()."""
+    resp = client.get("/api/notes", params={"where": "5"})
+    assert resp.status_code == 400
+
+
+def test_list_notes_unknown_field_returns_400(client):
+    """A typo'd or un-promoted query param fails loud instead of returning every note."""
+    resp = client.get("/api/notes", params={"intnsity": "focus"})
+    assert resp.status_code == 400
+    assert "unknown filter field" in resp.json()["detail"].lower()
+
+
+def test_list_notes_malformed_where_returns_400(client):
+    resp = client.get("/api/notes", params={"where": "not-json"})
+    assert resp.status_code == 400
 
 
 def test_create_note_traversal_template_returns_400(client):

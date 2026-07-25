@@ -143,34 +143,53 @@ def _collect_field_values(brain_path: str, field: str) -> set[str]:
             continue
         meta, _ = extract_frontmatter(content)
         val = meta.get(field)
-        if val and isinstance(val, str):
+        if isinstance(val, str) and val:
             values.add(val)
+        elif isinstance(val, list):
+            values.update(str(v) for v in val if v)
     return values
 
 
 def _no_match_hint(filters: dict[str, Optional[str]], brain_path: str) -> str:
     """Build a helpful 'no matches' message listing existing values for filtered fields."""
     parts = ["No notes matched the query."]
-    field_map = {"status": "status", "type": "type", "intensity": "intensity", "effort": "effort"}
-    for param_name, field_name in field_map.items():
-        if filters.get(param_name):
-            existing = sorted(_collect_field_values(brain_path, field_name))
-            if existing:
-                parts.append(f"Existing {field_name} values: {', '.join(existing)}")
+    for field in filters:
+        existing = sorted(_collect_field_values(brain_path, field))
+        if existing:
+            parts.append(f"Existing {field} values: {', '.join(existing)}")
     return "\n".join(parts)
 
 
 def handle_brain_query(
-    tag: Optional[str], status: Optional[str], note_type: Optional[str],
     brain_path: str,
-    intensity: Optional[str] = None, effort: Optional[str] = None,
-    created_after: Optional[str] = None, created_before: Optional[str] = None,
+    *,
+    tag: Optional[str] = None,
+    fields: Optional[dict] = None,
+    where: Optional[dict] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
+    field_specs: Optional[list] = None,
 ) -> str:
-    for name, value in [("tag", tag), ("status", status), ("type", note_type),
-                        ("intensity", intensity), ("effort", effort)]:
-        if value:
-            if err := _validate_query_param(name, value):
-                return err
+    fields = {k: v for k, v in (fields or {}).items() if v}
+    where = {k: v for k, v in (where or {}).items() if v}
+
+    collision = set(fields) & set(where)
+    if collision:
+        return ("Invalid filter: " + ", ".join(sorted(collision)) +
+                " given both as a promoted field and in 'where'")
+
+    all_filters = {**fields, **where}
+    kind_of = {f.name: f.kind for f in (field_specs or [])}
+
+    if tag:
+        if err := _validate_query_param("tag", tag):
+            return err
+    for name in where:
+        if err := _validate_query_param(name, name):
+            return err
+    for name, value in all_filters.items():
+        if err := _validate_query_param(name, value):
+            return err
 
     # Validate date params
     for name, value in [("created_after", created_after), ("created_before", created_before)]:
@@ -182,7 +201,7 @@ def handle_brain_query(
 
     # Frontmatter filters require walking files directly — zk's FTS won't match them.
     # tag uses zk's native --tag filter, which is index-backed and correct.
-    has_frontmatter_filter = any([status, note_type, intensity, effort, created_after, created_before])
+    has_frontmatter_filter = bool(all_filters) or bool(created_after or created_before)
 
     if has_frontmatter_filter:
         # Collect candidates via zk if a tag filter is also present, otherwise all files
@@ -221,16 +240,23 @@ def handle_brain_query(
             except Exception:
                 continue
             meta, _ = extract_frontmatter(content)
-            if status == "unset":
-                if meta.get("status"):
-                    continue
-            elif status and meta.get("status") != status:
-                continue
-            if note_type and meta.get("type") != note_type:
-                continue
-            if intensity and meta.get("intensity") != intensity:
-                continue
-            if effort and meta.get("effort") != effort:
+            skip = False
+            for field, value in all_filters.items():
+                mv = meta.get(field)
+                if value == "unset":
+                    if mv:
+                        skip = True
+                        break
+                elif kind_of.get(field, "scalar") == "list":
+                    mvlist = mv if isinstance(mv, list) else ([mv] if mv else [])
+                    if value not in mvlist:
+                        skip = True
+                        break
+                else:
+                    if mv != value:
+                        skip = True
+                        break
+            if skip:
                 continue
             if created_after or created_before:
                 created = meta.get("created") or meta.get("date") or ""
@@ -247,10 +273,7 @@ def handle_brain_query(
             files.append(os.path.relpath(fpath, brain_path))
 
         if not files:
-            return _no_match_hint(
-                {"status": status, "type": note_type, "intensity": intensity, "effort": effort},
-                brain_path,
-            )
+            return _no_match_hint(all_filters, brain_path)
         return "\n".join(sorted(files))
 
     # tag-only query: use zk with index refresh

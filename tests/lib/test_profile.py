@@ -132,6 +132,26 @@ def test_validate_profile_missing_skill(tmp_path):
     assert any("brain-save" in e for e in errors)
 
 
+RESERVED_FIELD_TOML = ACE_TOML + """
+    [fields.tag]
+    kind = "scalar"
+    label = "Reserved collision"
+"""
+
+
+def test_validate_profile_rejects_reserved_field_name(tmp_path):
+    """A profile field named 'tag' would shadow the stable 'tag' query param in the
+    generated MCP/REST schema — must be rejected."""
+    d = _build_profile_tree(
+        tmp_path, RESERVED_FIELD_TOML,
+        templates=["default.md"],
+        global_skills=["brain-capture", "brain-save"],
+        vault_skills=["brain-daily", "brain-hygiene"],
+    )
+    errors = validate_profile(load_profile(d), d)
+    assert any("tag" in e and "reserved" in e.lower() for e in errors)
+
+
 INFRA_ZK = {
     "notebook": {"exclude": ["templates/"]},
     "note": {"extension": "md", "id-charset": "alphanum", "id-length": 0,

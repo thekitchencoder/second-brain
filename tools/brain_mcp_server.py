@@ -27,6 +27,24 @@ from lib.brain import (
 _cfg = Config()
 
 
+def _brain_query_schema(profile):
+    """Build the brain_query tool description + inputSchema from profile.fields."""
+    props = {
+        "tag": {"type": "string"},
+        "created_after": {"type": "string", "description": "Include notes created on or after this date (YYYY-MM-DD)."},
+        "created_before": {"type": "string", "description": "Include notes created on or before this date (YYYY-MM-DD)."},
+        "where": {"type": "object", "description": "Filter any frontmatter key: {field: value}. Values must be slug-like (letters, digits, -, _)."},
+    }
+    for f in profile.fields:
+        props[f.name] = {"type": "string", "description": f.query_desc or f.label}
+    labels = ", ".join(f.label for f in profile.fields)
+    desc = (
+        f"Structured metadata query. Filter notes by tag, {labels}, or date range, "
+        f"or any frontmatter key via 'where'. Use '<field>=unset' to find notes missing a field."
+    )
+    return desc, {"type": "object", "properties": props}
+
+
 def _build_server():
     """Create and configure the MCP Server with all tool definitions."""
     from mcp.server import Server
@@ -36,6 +54,8 @@ def _build_server():
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
+        profile = _cfg.load_profile()
+        brain_query_desc, brain_query_schema = _brain_query_schema(profile)
         return [
             Tool(
                 name="brain_search",
@@ -51,19 +71,8 @@ def _build_server():
             ),
             Tool(
                 name="brain_query",
-                description="Structured metadata query using zk. Filter notes by tag, status, type, intensity, effort, or date range. Use status='unset' to find notes with no status field. If no notes match, existing values for the filtered fields are shown.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "tag": {"type": "string"},
-                        "status": {"type": "string", "description": "Filter by status value, or 'unset' to find notes missing the status field entirely."},
-                        "type": {"type": "string"},
-                        "intensity": {"type": "string", "description": "Filter by effort intensity (focus, ongoing, simmering)."},
-                        "effort": {"type": "string", "description": "Filter by effort field in frontmatter."},
-                        "created_after": {"type": "string", "description": "Include notes created on or after this date (YYYY-MM-DD)."},
-                        "created_before": {"type": "string", "description": "Include notes created on or before this date (YYYY-MM-DD)."},
-                    },
-                },
+                description=brain_query_desc,
+                inputSchema=brain_query_schema,
             ),
             Tool(
                 name="brain_create",
@@ -214,15 +223,18 @@ def _build_server():
                 db_path=db_path,
             )
         elif name == "brain_query":
+            profile = _cfg.load_profile()
+            field_names = {f.name for f in profile.fields}
+            fields = {k: v for k, v in arguments.items() if k in field_names}
+            where = {k: str(v) for k, v in (arguments.get("where") or {}).items()}
             text = handle_brain_query(
+                brain_path,
                 tag=arguments.get("tag"),
-                status=arguments.get("status"),
-                note_type=arguments.get("type"),
-                brain_path=brain_path,
-                intensity=arguments.get("intensity"),
-                effort=arguments.get("effort"),
+                fields=fields,
+                where=where,
                 created_after=arguments.get("created_after"),
                 created_before=arguments.get("created_before"),
+                field_specs=profile.fields,
             )
         elif name == "brain_create":
             text = handle_brain_create(

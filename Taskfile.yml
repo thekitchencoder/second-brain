@@ -114,6 +114,8 @@ tasks:
       -v "{{.ROOT_DIR}}/tools/brain-init:/usr/local/lib/brain-tools/brain-init"
       -v "{{.ROOT_DIR}}/tools/brain-profile:/usr/local/lib/brain-tools/brain-profile"
       -v "{{.ROOT_DIR}}/tools/setup.sh:/usr/local/lib/brain-tools/setup.sh"
+      -v "{{.ROOT_DIR}}/tools/brain_mcp_server.py:/usr/local/lib/brain-tools/brain_mcp_server.py"
+      -v "{{.ROOT_DIR}}/tools/brain_api.py:/usr/local/lib/brain-tools/brain_api.py"
       -v "{{.ROOT_DIR}}/profiles:/usr/local/lib/brain-tools/profiles"
       -v "{{.ROOT_DIR}}/pyproject.toml:/usr/local/lib/brain-tools/pyproject.toml"
       -w /usr/local/lib/brain-tools
