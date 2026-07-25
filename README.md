@@ -39,6 +39,7 @@ The `brain-init` wizard will guide you through picking your model provider and e
 
 ### For Developers
 - [Development Guide](docs/development.md): How to build the image, run in development mode, and create new skills or tools.
+- [CHANGELOG](CHANGELOG.md): What has landed on `main`, and the release cadence during the profile refactor.
 
 ---
 
@@ -47,5 +48,28 @@ The `brain-init` wizard will guide you through picking your model provider and e
 - **Semantic Search**: Find notes by meaning, not just keywords.
 - **MCP Server**: Expose your brain tools to any Model Context Protocol client.
 - **Claude Code Integration**: Custom skills for note capture, triage, and management.
+- **Profiles**: One engine runs many brains — the bundled `ace` profile is the zero-config default; custom profiles (folders, skills, templates, queryable fields) are cloneable and forkable.
 - **Multi-platform**: Runs anywhere Docker does; works with Obsidian and VS Code on the host.
 - **Privacy First**: Designed to run with local models via Docker Model Runner or Ollama.
+
+## Roadmap
+
+second-brain is mid-way through a **profile refactor** — separating the *engine* (this
+Docker image: search, MCP, editing) from a *profile* (a brain's folders, templates,
+skills, identity, and queryable fields). The goal: **one engine, many brains, no fork** —
+so the same image can run a work brain, a home brain, and a private one, each with its own
+character.
+
+**Landed on `main`** (unreleased):
+- Profile-driven engine — a brain self-describes via `<brain>/.brain/`
+- Custom-profile distribution — clone/update a profile; bundled `ace` stays the zero-config default
+- Profile-driven queries — metadata filters adapt to each profile's fields
+
+**Planned:**
+- Authentication & access control as a profile dimension (`none` / OAuth / RBAC)
+- Public, forkable profile repositories (community profiles)
+
+These land as **interim pull requests that merge without cutting a release** — the image on
+`:latest` is the last tagged version, and a version bump and new release will come once the
+refactor reaches its end state. Custom profiles are covered in the
+[User Guide](docs/user-guide.md); the running record is in the [CHANGELOG](CHANGELOG.md).
