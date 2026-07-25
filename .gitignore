@@ -14,3 +14,4 @@ skills/*.zip
 tests/fixtures/vault/.ai/
 tests/fixtures/vault/.zk/notebook.db
 docs/plans
+docs/superpowers/
