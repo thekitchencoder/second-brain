@@ -65,6 +65,7 @@ def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
                 created TEXT,
                 tags TEXT,
                 scope TEXT,
+                layer TEXT,
                 UNIQUE(filepath, chunk_index)
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vec0(
@@ -82,6 +83,13 @@ def init_db(db_path: str, embedding_dim: int, model: str = "") -> None:
             conn.execute(
                 "INSERT OR REPLACE INTO meta VALUES ('embedding_model', ?)", (model,)
             )
+        # Migration (finding 2): CREATE TABLE IF NOT EXISTS does not add columns
+        # to an already-existing chunks table, so every already-indexed brain
+        # from before this change lacks `layer`. Idempotent add-column so the
+        # first upsert_chunk after upgrade doesn't fail.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(chunks)").fetchall()}
+        if "layer" not in cols:
+            conn.execute("ALTER TABLE chunks ADD COLUMN layer TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -101,8 +109,8 @@ def upsert_chunk(
         tags_json = json.dumps(meta.get("tags") or [])
         conn.execute("BEGIN")
         conn.execute("""
-            INSERT INTO chunks (filepath, chunk_index, content, content_hash, title, type, status, created, tags, scope)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO chunks (filepath, chunk_index, content, content_hash, title, type, status, created, tags, scope, layer)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(filepath, chunk_index) DO UPDATE SET
                 content=excluded.content,
                 content_hash=excluded.content_hash,
@@ -111,10 +119,11 @@ def upsert_chunk(
                 status=excluded.status,
                 created=excluded.created,
                 tags=excluded.tags,
-                scope=excluded.scope
+                scope=excluded.scope,
+                layer=excluded.layer
         """, (filepath, chunk_index, content, content_hash, meta.get("title"),
               meta.get("type"), meta.get("status"), meta.get("created"),
-              tags_json, meta.get("scope")))
+              tags_json, meta.get("scope"), meta.get("layer")))
         chunk_id = conn.execute(
             "SELECT id FROM chunks WHERE filepath=? AND chunk_index=?",
             (filepath, chunk_index)
@@ -149,6 +158,52 @@ def search_chunks(db_path: str, query_embedding: list[float], limit: int = 5) ->
         r["tags"] = json.loads(r["tags"] or "[]")
         results.append(r)
     return results
+
+
+def search_chunks_in_layers(db_path: str, query_embedding: list[float], k: int,
+                            allowed_layers: list[str]) -> list[dict]:
+    """k nearest chunks whose note layer is in allowed_layers, recall-correct.
+
+    sqlite-vec's KNN + a JOIN filter is a post-filter, so a fixed k could return
+    fewer than k when forbidden neighbours crowd the top. Paginate: widen the
+    KNN (k*factor) until k in-layer rows are found or the widened scan stops
+    growing (index exhausted).
+    """
+    if not allowed_layers:
+        return []                       # explicit deny-all (mirror the port)
+    placeholders = ",".join("?" for _ in allowed_layers)
+    conn = _connect(db_path)
+    try:
+        factor = 4
+        while True:
+            scan = max(k * factor, k)
+            rows = conn.execute(f"""
+                SELECT c.filepath, c.chunk_index, c.content, c.title, c.type,
+                       c.status, c.created, c.tags, c.scope, c.layer, e.distance
+                FROM embeddings e
+                JOIN chunks c ON c.id = e.rowid
+                WHERE e.embedding MATCH ? AND k = ?
+                  AND c.layer IN ({placeholders})
+                ORDER BY e.distance
+            """, (sqlite_vec.serialize_float32(query_embedding), scan, *allowed_layers)).fetchall()
+            # Stop when we have enough in-layer rows, or the scan already covers
+            # the whole index (widening further can't surface more). _index_size
+            # is the sole terminator.
+            if len(rows) >= k or scan >= _index_size(conn):
+                break
+            factor *= 2
+        results = []
+        for row in rows[:k]:
+            r = dict(row)
+            r["tags"] = json.loads(r["tags"] or "[]")
+            results.append(r)
+        return results
+    finally:
+        conn.close()
+
+
+def _index_size(conn) -> int:
+    return conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
 
 
 def delete_file_chunks(db_path: str, filepath: str) -> None:

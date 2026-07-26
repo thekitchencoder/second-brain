@@ -72,3 +72,84 @@ def test_ace_profile_is_auth_none():
     prof = load_profile(_ACE)
     assert prof.auth.mode == "none"
     assert prof.auth.rbac is None
+
+
+# ── Task 8: RBAC backward-compat proof. ─────────────────────────────────────
+#
+# Plan E (Seam 7) threads a `principal` through every content handler and
+# gates every read/write on visible()/can_write(). The ace profile declares no
+# visibility-mode fields and no [auth.rbac] block, and mode="none" makes
+# resolve_principal() always return OWNER (read_layers=write_layers=("*",)).
+# These tests prove that combination is a true no-op: visible() returns True
+# for any note shape under any role, and the real handlers behave exactly as
+# they did before Plan E when called the way pre-refactor callers always did
+# (no principal passed — the handler default IS OWNER).
+
+
+def test_visible_true_for_every_note_shape_under_ace_defaults():
+    """No ace field declares visibility="allow"/"deny", so visible() can only
+    ever be tripped by the coarse layer wall — and OWNER's read_layers=("*",)
+    short-circuits that too. True for every plausible frontmatter shape,
+    including a stray 'layer' key an ace note was never meant to carry."""
+    from lib.visibility import visible
+    from lib.auth import OWNER, Principal
+
+    fields = load_profile(_ACE).fields
+    note_shapes = [
+        {},                                             # no frontmatter at all
+        {"type": "effort", "status": "active"},
+        {"type": "note", "tags": ["x", "y"], "intensity": "focus"},
+        {"layer": "anything"},                          # ace never declares 'layer'
+        {"known_by": ["someone"]},                       # ace never declares 'known_by'
+    ]
+    for meta in note_shapes:
+        assert visible(meta, OWNER, fields) is True
+
+    # Even a hypothetical restricted-role principal can't arise under ace's
+    # mode="none" (resolve_principal always returns OWNER) — but confirm the
+    # predicate itself stays permissive for ANY unrestricted principal, since
+    # it is role-driven, not identity-driven.
+    unrestricted = Principal(id="x", role="anyone", read_layers=("*",),
+                             write_layers=("*",), kind="static")
+    for meta in note_shapes:
+        assert visible(meta, unrestricted, fields) is True
+
+
+def test_resolve_principal_is_always_owner_under_ace_mode_none():
+    """mode="none" short-circuits resolve_principal() before any token is even
+    inspected — no bearer token, a garbage token, anything, always OWNER."""
+    from lib.auth import resolve_principal, OWNER
+
+    prof = load_profile(_ACE)
+    assert resolve_principal(None, prof, settings=None) == OWNER
+    assert resolve_principal("garbage-token", prof, settings=None) == OWNER
+    assert resolve_principal("", prof, settings=None) == OWNER
+
+
+def test_read_query_unchanged_when_no_principal_is_passed(tmp_path):
+    """End-to-end: the ace-shaped handlers behave exactly as pre-Plan-E when
+    invoked the way every caller invoked them before Plan E existed — with no
+    `principal` keyword at all. The handler default (principal=OWNER) is what
+    makes this byte-for-byte backward compatible; it's not something callers
+    have to opt into."""
+    import sys
+    from unittest.mock import MagicMock
+    if "sqlite_vec" not in sys.modules:
+        sys.modules["sqlite_vec"] = MagicMock()
+    if "openai" not in sys.modules:
+        sys.modules["openai"] = MagicMock()
+    from lib.brain import handle_brain_read, handle_brain_query, handle_brain_write
+
+    brain = tmp_path / "brain"
+    (brain / "Efforts").mkdir(parents=True)
+    (brain / "Efforts" / "note.md").write_text(
+        "---\ntype: effort\nstatus: active\n---\nbody text")
+    fields = load_profile(_ACE).fields
+
+    # No `principal=` kwarg anywhere below.
+    assert "body text" in handle_brain_read("Efforts/note.md", str(brain), fields=fields)
+    out = handle_brain_query(str(brain), fields={"status": "active"}, field_specs=fields)
+    assert "note.md" in out
+    assert handle_brain_write(
+        "Efforts/new.md", "---\ntype: note\n---\nhello", str(brain), fields=fields
+    ).startswith("Written")

@@ -102,7 +102,7 @@ def test_call_tool_sees_current_principal(monkeypatch):
     server = brain_mcp_server._build_server()
 
     import asyncio
-    p = Principal(id="agent", role="owner", layers=("*",), kind="static")
+    p = Principal(id="agent", role="owner", read_layers=("*",), write_layers=("*",), kind="static")
     tok = brain_mcp_server.current_principal.set(p)
     try:
         result = asyncio.run(brain_mcp_server._invoke_tool("brain_templates", {}))

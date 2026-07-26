@@ -69,20 +69,23 @@ async def _invoke_tool(name: str, arguments: dict) -> str:
             query=arguments["query"],
             limit=arguments.get("limit", 5),
             db_path=db_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_query":
         profile = _cfg.load_profile()
         field_names = {f.name for f in profile.fields}
-        fields = {k: v for k, v in arguments.items() if k in field_names}
+        field_values = {k: v for k, v in arguments.items() if k in field_names}
         where = {k: str(v) for k, v in (arguments.get("where") or {}).items()}
         text = handle_brain_query(
             brain_path,
             tag=arguments.get("tag"),
-            fields=fields,
+            fields=field_values,
             where=where,
             created_after=arguments.get("created_after"),
             created_before=arguments.get("created_before"),
             field_specs=profile.fields,
+            principal=principal,
         )
     elif name == "brain_create":
         text = handle_brain_create(
@@ -90,6 +93,8 @@ async def _invoke_tool(name: str, arguments: dict) -> str:
             title=arguments["title"],
             brain_path=brain_path,
             directory=arguments.get("directory"),
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_related":
         text = handle_brain_related(
@@ -97,12 +102,16 @@ async def _invoke_tool(name: str, arguments: dict) -> str:
             limit=arguments.get("limit", 5),
             db_path=db_path,
             brain_path=brain_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_write":
         text = handle_brain_write(
             filepath=arguments["filepath"],
             content=arguments["content"],
             brain_path=brain_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_templates":
         text = handle_brain_templates(brain_path=brain_path)
@@ -110,29 +119,39 @@ async def _invoke_tool(name: str, arguments: dict) -> str:
         text = handle_brain_read(
             filepath=arguments["filepath"],
             brain_path=brain_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_edit":
         text = handle_brain_edit(
             filepath=arguments["filepath"],
             op=arguments["op"],
             brain_path=brain_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
             **{k: v for k, v in arguments.items() if k not in ("filepath", "op")},
         )
     elif name == "brain_backlinks":
         text = handle_brain_backlinks(
             filepath=arguments["filepath"],
             brain_path=brain_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_trash":
         text = handle_brain_trash(
             filepath=arguments["filepath"],
             brain_path=brain_path,
             db_path=db_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     elif name == "brain_restore":
         text = handle_brain_restore(
             trash_path=arguments["trash_path"],
             brain_path=brain_path,
+            principal=principal,
+            fields=_cfg.load_profile().fields,
         )
     else:
         text = f"Unknown tool: {name}"

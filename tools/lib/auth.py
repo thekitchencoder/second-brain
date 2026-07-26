@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 from authlib.jose import JsonWebKey, JsonWebToken
 
+from lib.profile import role_action_layers
+
 # Explicit algorithm allowlist — RS256 only. A generic `jwt.decode()` (no
 # whitelist) trusts the `alg` in the token header, so a future authlib change
 # (or an attacker-supplied token) could reopen alg-confusion (e.g. HS256 using
@@ -27,21 +29,22 @@ _JWT = JsonWebToken(["RS256"])
 class Principal:
     id: str                          # oauth subject, static principal id, or "owner"
     role: str
-    layers: tuple[str, ...]          # ("*",) means all layers; consumed by Plan E
+    read_layers: tuple[str, ...]     # ("*",) means all layers; consumed by Plan E
+    write_layers: tuple[str, ...]    # ("*",) means all layers; consumed by Plan E
     kind: str                        # "owner" | "static" | "oauth"
 
 
-OWNER = Principal(id="owner", role="owner", layers=("*",), kind="owner")
+OWNER = Principal(id="owner", role="owner", read_layers=("*",), write_layers=("*",), kind="owner")
 
 # Deny sentinel — the default when no boundary has established a principal.
-# Plan E treats layers=() / kind="anonymous" as "deny everything". Never
-# default any principal state to OWNER (fail-open); grant OWNER explicitly.
-ANONYMOUS = Principal(id="anonymous", role="", layers=(), kind="anonymous")
+# Plan E treats read_layers=()/write_layers=() plus kind="anonymous" as "deny
+# everything". Never default any principal state to OWNER (fail-open); grant
+# OWNER explicitly.
+ANONYMOUS = Principal(id="anonymous", role="", read_layers=(), write_layers=(), kind="anonymous")
 
 
-def role_layers(rbac, role: str) -> tuple[str, ...]:
-    spec = (rbac.roles or {}).get(role) or {}
-    return tuple(spec.get("layers", []))
+def role_layers(rbac, role: str, action: str) -> tuple[str, ...]:
+    return tuple(role_action_layers(rbac, role, action))
 
 
 def _principal_tokens() -> dict[str, str]:
@@ -64,7 +67,10 @@ def resolve_static(token: str, rbac) -> Principal | None:
             role = (rbac.principals or {}).get(pid)
             if not role or role not in (rbac.roles or {}):
                 return None
-            return Principal(id=pid, role=role, layers=role_layers(rbac, role), kind="static")
+            return Principal(id=pid, role=role,
+                             read_layers=role_layers(rbac, role, "read"),
+                             write_layers=role_layers(rbac, role, "write"),
+                             kind="static")
     return None
 
 
@@ -155,7 +161,10 @@ def resolve_jwt(token: str, rbac, settings) -> Principal | None:
     role = (rbac.identities or {}).get(subject) or rbac.default_role
     if not role or role not in (rbac.roles or {}):
         return None
-    return Principal(id=subject, role=role, layers=role_layers(rbac, role), kind="oauth")
+    return Principal(id=subject, role=role,
+                     read_layers=role_layers(rbac, role, "read"),
+                     write_layers=role_layers(rbac, role, "write"),
+                     kind="oauth")
 
 
 def resolve_principal(token, profile, settings) -> Principal | None:

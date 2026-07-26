@@ -29,6 +29,7 @@ from lib.oauth_server import (
     redeem_auth_code,
 )
 from lib.clean import extract_frontmatter
+from lib.visibility import visible, can_write_transition
 from lib.edit import (
     append_to_section,
     find_replace,
@@ -41,6 +42,10 @@ from lib.edit import (
 from lib.brain import (
     _check_within_brain,
     _list_template_names,
+    _meta_for_path,
+    _paginated_visible_search,
+    _principal_unrestricted,
+    _principal_write_unrestricted,
     _relative_path,
     extract_wikilinks,
     find_backlinks,
@@ -504,7 +509,13 @@ def search_notes(
         embedding = get_embedding(q)
     except EmbeddingError as e:
         raise HTTPException(503, f"Embedding service unavailable: {e}")
-    results = search_chunks(_cfg.db_path, embedding, limit=limit)
+    if _principal_unrestricted(principal):
+        results = search_chunks(_cfg.db_path, embedding, limit=limit)
+    else:
+        from lib.vectorstore import get_store
+        fields = _cfg.load_profile().fields
+        results = _paginated_visible_search(get_store(_cfg.db_path), embedding, limit,
+                                            principal, fields)
     return [
         SearchResult(
             filepath=r["filepath"],
@@ -546,7 +557,7 @@ def list_notes(request: Request, tag: Optional[str] = None,
             raise HTTPException(400, "where must be a JSON object of string values")
     result = handle_brain_query(_cfg.brain_path, tag=tag, fields=fields, where=where_dict,
                                 created_after=created_after, created_before=created_before,
-                                field_specs=profile.fields)
+                                field_specs=profile.fields, principal=principal)
     if result.startswith("Invalid"):
         raise HTTPException(400, result)
     if result.startswith("No notes") or result.startswith("zk"):
@@ -562,6 +573,13 @@ def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
     import numpy as np
 
     full = _resolve(filepath)
+    unrestricted = _principal_unrestricted(principal)
+    fields = None if unrestricted else _cfg.load_profile().fields
+    if not unrestricted and os.path.isfile(full):
+        # Oracle-safety on the TARGET: mirrors the handle_brain_related guard —
+        # a forbidden-but-indexed note must 404 identically to an absent one.
+        if not visible(_meta_for_path(full), principal, fields):
+            raise HTTPException(404, f"No embeddings found for {filepath}")
     vectors = get_chunk_embeddings(_cfg.db_path, full)
     if not vectors:
         vectors = get_chunk_embeddings(_cfg.db_path, filepath)
@@ -569,36 +587,52 @@ def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
         raise HTTPException(404, f"No embeddings found for {filepath}")
 
     mean_vec = list(np.mean(vectors, axis=0))
-    candidates = search_chunks(_cfg.db_path, mean_vec, limit=limit * 10)
-    seen: set[str] = set()
-    results = []
-    for r in candidates:
-        fp = r["filepath"]
-        if fp in (full, filepath) or fp in seen:
-            continue
-        seen.add(fp)
-        results.append(
-            SearchResult(
-                filepath=fp,
-                title=r.get("title"),
-                type=r.get("type"),
-                status=r.get("status"),
-                created=r.get("created"),
-                tags=r.get("tags") or [],
-                content_preview=r.get("content", "")[:400],
-                distance=r.get("distance"),
-            )
+    exclude = {full, filepath}
+    if unrestricted:
+        candidates = search_chunks(_cfg.db_path, mean_vec, limit=limit * 10)
+        seen: set[str] = set()
+        raw_results = []
+        for r in candidates:
+            fp = r["filepath"]
+            if fp in exclude or fp in seen:
+                continue
+            seen.add(fp)
+            raw_results.append(r)
+            if len(raw_results) == limit:
+                break
+    else:
+        from lib.vectorstore import get_store
+        raw_results = _paginated_visible_search(get_store(_cfg.db_path), mean_vec, limit,
+                                                principal, fields,
+                                                exclude=exclude, initial_k=limit * 10)
+    return [
+        SearchResult(
+            filepath=r["filepath"],
+            title=r.get("title"),
+            type=r.get("type"),
+            status=r.get("status"),
+            created=r.get("created"),
+            tags=r.get("tags") or [],
+            content_preview=r.get("content", "")[:400],
+            distance=r.get("distance"),
         )
-        if len(results) == limit:
-            break
-    return results
+        for r in raw_results
+    ]
 
 
 @app.get("/api/notes/{filepath:path}/backlinks", response_model=list[BacklinkEntry])
 def get_backlinks(filepath: str, principal: Principal = Depends(require_principal)):
     """Find all notes that contain a [[wikilink]] to this note."""
     full = _resolve(filepath)
-    return _find_backlinks(full)
+    results = _find_backlinks(full)
+    if not _principal_unrestricted(principal):
+        fields = _cfg.load_profile().fields
+        results = [
+            r for r in results
+            if visible(_meta_for_path(os.path.join(_cfg.brain_path, r["filepath"])),
+                      principal, fields)
+        ]
+    return results
 
 
 @app.get("/api/notes/{filepath:path}", response_model=NoteResponse)
@@ -606,6 +640,14 @@ def read_note(filepath: str, principal: Principal = Depends(require_principal)):
     """Read a note with parsed frontmatter and extracted wikilinks."""
     full = _resolve(filepath)
     raw = _read_file(full)
+    if not _principal_unrestricted(principal):
+        meta, _ = extract_frontmatter(raw)
+        fields = _cfg.load_profile().fields
+        if not visible(meta, principal, fields):
+            # Oracle-safe: identical detail format to the genuinely-absent case
+            # in _read_file above — a forbidden note is indistinguishable from
+            # a missing one.
+            raise HTTPException(status_code=404, detail=f"File not found: {full}")
     return _parse_note(_relative(full), raw)
 
 
@@ -613,6 +655,20 @@ def read_note(filepath: str, principal: Principal = Depends(require_principal)):
 def write_note(filepath: str, req: WriteRequest, principal: Principal = Depends(require_principal)):
     """Full file write (replace entire content)."""
     full = _resolve(filepath)
+    fields = _cfg.load_profile().fields
+    new_meta, _ = extract_frontmatter(req.content)
+    if os.path.isfile(full):
+        old_meta, _ = extract_frontmatter(_read_file(full))
+        # read gate — can the caller even see the target? (oracle-safe)
+        if not _principal_unrestricted(principal) and not visible(old_meta, principal, fields):
+            # Oracle-safe: identical to read_note's forbidden-target 404.
+            raise HTTPException(status_code=404, detail=f"File not found: {full}")
+    else:
+        old_meta = new_meta  # brand-new path — only the incoming layer gates
+    # write gate — INDEPENDENT of the read dimension above; a principal can be
+    # read-unrestricted (read=["*"]) while still being write-restricted.
+    if not _principal_write_unrestricted(principal) and not can_write_transition(old_meta, new_meta, principal):
+        raise HTTPException(status_code=403, detail=f"Not authorized to write {filepath}")
     _write_file(full, req.content)
     return EditResponse(filepath=_relative(full), success=True, detail="File written")
 
@@ -624,10 +680,24 @@ def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(re
     text = _read_file(full)
     op = req.op
 
+    old_meta, _ = extract_frontmatter(text)
+    unrestricted = _principal_unrestricted(principal)
+    if not unrestricted:
+        fields = _cfg.load_profile().fields
+        if not visible(old_meta, principal, fields):
+            # Oracle-safe: identical to read_note's forbidden-target 404.
+            raise HTTPException(status_code=404, detail=f"File not found: {full}")
+
+    # Apply the edit op to produce the candidate text IN MEMORY first — never
+    # persist before authorizing. The post-edit frontmatter is authoritative
+    # for every op (including update_frontmatter): a raw-text op like
+    # find_replace/replace_lines can rewrite the `layer:` line just as surely
+    # as update_frontmatter can, so gating on a stale `new_meta = old_meta`
+    # would let those ops smuggle a layer escalation past the check.
     if op == EditOp.update_frontmatter:
         if not req.frontmatter:
             raise HTTPException(400, "'frontmatter' dict required for update_frontmatter")
-        text = update_frontmatter(text, req.frontmatter)
+        candidate = update_frontmatter(text, req.frontmatter)
         detail = f"Updated frontmatter keys: {', '.join(req.frontmatter.keys())}"
 
     elif op in (EditOp.replace_section, EditOp.append_to_section, EditOp.prepend_to_section):
@@ -635,11 +705,11 @@ def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(re
             raise HTTPException(400, f"'heading' required for {op.value}")
         body = req.body or ""
         if op == EditOp.replace_section:
-            text, found = replace_section(text, req.heading, body)
+            candidate, found = replace_section(text, req.heading, body)
         elif op == EditOp.append_to_section:
-            text, found = append_to_section(text, req.heading, body)
+            candidate, found = append_to_section(text, req.heading, body)
         else:
-            text, found = prepend_to_section(text, req.heading, body)
+            candidate, found = prepend_to_section(text, req.heading, body)
         if not found:
             raise HTTPException(404, f"Section not found: {req.heading}")
         detail = f"{op.value}: {req.heading}"
@@ -647,7 +717,7 @@ def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(re
     elif op == EditOp.replace_lines:
         if req.start_line is None or req.end_line is None:
             raise HTTPException(400, "'start_line' and 'end_line' required")
-        text, err = replace_lines(text, req.start_line, req.end_line, req.replacement or "")
+        candidate, err = replace_lines(text, req.start_line, req.end_line, req.replacement or "")
         if err:
             raise HTTPException(400, err)
         detail = f"Replaced lines [{req.start_line}, {req.end_line})"
@@ -655,17 +725,17 @@ def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(re
     elif op == EditOp.find_replace:
         if req.find is None:
             raise HTTPException(400, "'find' required for find_replace")
-        text, n = find_replace(
+        candidate, n = find_replace(
             text, req.find, req.replace or "", regex=req.regex, count=req.count
         )
         if n == -1:
-            raise HTTPException(400, text)  # text is the error message
+            raise HTTPException(400, candidate)  # candidate is the error message
         detail = f"Replaced {n} occurrence(s)"
 
     elif op == EditOp.insert_wikilink:
         if not req.target:
             raise HTTPException(400, "'target' required for insert_wikilink")
-        text, inserted = insert_wikilink(text, req.target, context_heading=req.context_heading)
+        candidate, inserted = insert_wikilink(text, req.target, context_heading=req.context_heading)
         if not inserted:
             return EditResponse(filepath=_relative(full), success=True, detail="Link already present")
         detail = f"Inserted [[{req.target}]]"
@@ -673,7 +743,14 @@ def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(re
     else:
         raise HTTPException(400, f"Unknown edit operation: {op}")
 
-    _write_file(full, text)
+    # write gate — INDEPENDENT of the read fast-path above; a principal can be
+    # read-unrestricted (read=["*"]) while still being write-restricted, so this
+    # must never be skipped just because `unrestricted` (read-keyed) is True.
+    new_meta, _ = extract_frontmatter(candidate)
+    if not _principal_write_unrestricted(principal) and not can_write_transition(old_meta, new_meta, principal):
+        raise HTTPException(status_code=403, detail=f"Not authorized to write {filepath}")
+
+    _write_file(full, candidate)
     return EditResponse(filepath=_relative(full), success=True, detail=detail)
 
 
@@ -685,7 +762,11 @@ def create_note(req: CreateRequest, principal: Principal = Depends(require_princ
         title=req.title,
         brain_path=_cfg.brain_path,
         directory=req.directory,
+        principal=principal,
+        fields=_cfg.load_profile().fields,
     )
+    if result.startswith("Not authorized"):
+        raise HTTPException(403, result)
     if not result.endswith(".md"):
         raise HTTPException(400, result)
     return EditResponse(filepath=_relative(result), success=True, detail=f"Created: {result}")
@@ -701,7 +782,13 @@ def trash_note(filepath: str, principal: Principal = Depends(require_principal))
         filepath=_relative(full),
         brain_path=_cfg.brain_path,
         db_path=_cfg.db_path,
+        principal=principal,
+        fields=_cfg.load_profile().fields,
     )
+    if result.startswith("File not found"):
+        raise HTTPException(status_code=404, detail=result)
+    if result.startswith("Not authorized"):
+        raise HTTPException(status_code=403, detail=result)
     if result.startswith("Error"):
         raise HTTPException(status_code=400, detail=result)
     return EditResponse(filepath=filepath, success=True, detail=result)
@@ -713,7 +800,11 @@ def restore_note(filepath: str, principal: Principal = Depends(require_principal
     result = handle_brain_restore(
         trash_path=filepath,
         brain_path=_cfg.brain_path,
+        principal=principal,
+        fields=_cfg.load_profile().fields,
     )
+    if result.startswith("Not authorized"):
+        raise HTTPException(status_code=403, detail=result)
     if result.startswith("Error"):
         raise HTTPException(status_code=400, detail=result)
     return EditResponse(filepath=filepath, success=True, detail=result)

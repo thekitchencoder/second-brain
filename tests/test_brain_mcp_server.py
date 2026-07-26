@@ -32,7 +32,7 @@ def mock_search_results():
 
 def test_handle_brain_search_returns_text(mock_search_results):
     with patch("lib.embeddings.get_embedding", return_value=[0.1] * 1024), \
-         patch("lib.db.search_chunks", return_value=mock_search_results):
+         patch("lib.vectorstore._db_search", return_value=mock_search_results):
         result = handle_brain_search(query="test", limit=5, db_path="/tmp/fake.db")
     assert "Test" in result
     assert "atlas/test.md" in result
@@ -41,14 +41,14 @@ def test_handle_brain_search_returns_text(mock_search_results):
 
 def test_handle_brain_search_no_results():
     with patch("lib.embeddings.get_embedding", return_value=[0.1] * 1024), \
-         patch("lib.db.search_chunks", return_value=[]):
+         patch("lib.vectorstore._db_search", return_value=[]):
         result = handle_brain_search(query="nothing", limit=5, db_path="/tmp/fake.db")
     assert "No results" in result
 
 
 def test_handle_brain_related_returns_text(mock_search_results):
-    with patch("lib.db.get_chunk_embeddings", return_value=[[0.1] * 1024]), \
-         patch("lib.db.search_chunks", return_value=mock_search_results):
+    with patch("lib.vectorstore._db_get_embeddings", return_value=[[0.1] * 1024]), \
+         patch("lib.vectorstore._db_search", return_value=mock_search_results):
         result = handle_brain_related(
             filepath="notes/other.md", limit=5,
             db_path="/tmp/fake.db", brain_path="/brain"
@@ -57,7 +57,7 @@ def test_handle_brain_related_returns_text(mock_search_results):
 
 
 def test_handle_brain_related_no_embeddings():
-    with patch("lib.db.get_chunk_embeddings", return_value=[]):
+    with patch("lib.vectorstore._db_get_embeddings", return_value=[]):
         result = handle_brain_related(
             filepath="notes/missing.md", limit=5,
             db_path="/tmp/fake.db", brain_path="/brain"

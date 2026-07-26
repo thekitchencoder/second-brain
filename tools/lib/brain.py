@@ -13,6 +13,8 @@ import numpy as np
 from lib.config import Config
 from lib.db import delete_file_chunks
 from lib.clean import extract_frontmatter
+from lib.auth import OWNER
+from lib.visibility import visible, can_write, can_write_transition
 from lib.edit import (
     append_to_section,
     find_replace,
@@ -84,42 +86,149 @@ def _relative_path(full_path: str, brain_path: str) -> str:
     return rel
 
 
+def _principal_unrestricted(principal) -> bool:
+    """True for owner / non-RBAC callers (read_layers=("*",)) — the fast path that
+    skips every visibility read below, keeping mode=none callers byte-for-byte
+    unchanged (no extra disk I/O, no pagination, no behaviour change)."""
+    layers = getattr(principal, "read_layers", None)
+    return isinstance(layers, (tuple, list, set, frozenset)) and "*" in layers
+
+
+def _principal_write_unrestricted(principal) -> bool:
+    """True for owner / non-RBAC callers (write_layers=("*",)) — the WRITE-dimension
+    fast path. Distinct from _principal_unrestricted (which keys on read_layers):
+    a principal can be read-unrestricted (read=["*"]) while still being
+    write-restricted (e.g. write=["fiction"]), and the two must never be
+    conflated — doing so is exactly the reviewer-escalation this guards against."""
+    layers = getattr(principal, "write_layers", None)
+    return isinstance(layers, (tuple, list, set, frozenset)) and "*" in layers
+
+
+def _meta_for_path(fp: str) -> dict:
+    """Best-effort frontmatter read for a search-result path. Unreadable → {},
+    which fails visible() closed for a restricted principal (deny-by-default on
+    a missing/unknown layer) and is a no-op for an unrestricted one."""
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return {}
+    meta, _ = extract_frontmatter(content)
+    return meta
+
+
+def _template_layer(raw: str) -> Optional[str]:
+    """Best-effort `layer` extraction from a zk template's frontmatter block.
+
+    Templates commonly embed unrendered Jinja/Handlebars expressions (e.g.
+    `date: {{format-date now "%Y-%m-%d"}}`) that make yaml.safe_load raise on
+    the whole block, so extract_frontmatter silently returns {} for every
+    bundled template — which would make can_write({"layer": None}, ...) deny
+    every non-"*" writer regardless of the template's real layer. Fall back to
+    a line-oriented regex scan for `layer: <value>` when full YAML parsing of
+    the block fails."""
+    meta, _ = extract_frontmatter(raw)
+    if "layer" in meta:
+        return meta.get("layer")
+    if not raw.startswith("---"):
+        return None
+    end = raw.find("\n---", 3)
+    if end == -1:
+        return None
+    block = raw[3:end]
+    m = re.search(r'^layer:\s*(.+?)\s*$', block, re.MULTILINE)
+    if not m:
+        return None
+    return m.group(1).strip().strip('"\'') or None
+
+
+def _paginated_visible_search(store, vector, limit: int, principal, fields, *,
+                               exclude=None, initial_k=None) -> list[dict]:
+    """Search the vector store (coarse allowed_layers wall already applied by the
+    store), then filter to principal-visible results by reading each candidate's
+    own frontmatter (fine). Grows k, doubling, until `limit` visible results are
+    collected or the store is exhausted — bounded so a pathological store can't
+    spin this forever."""
+    exclude = set(exclude or ())
+    k = initial_k or limit
+    out: list[dict] = []
+    for _ in range(6):
+        raw = store.search(vector, k=k, allowed_layers=principal.read_layers)
+        out = []
+        seen: set[str] = set(exclude)
+        for r in raw:
+            fp = r["filepath"]
+            if fp in seen:
+                continue
+            seen.add(fp)
+            if not visible(_meta_for_path(fp), principal, fields):
+                continue
+            out.append(r)
+            if len(out) == limit:
+                return out
+        if len(raw) < k:
+            break  # store exhausted at this k — no more candidates exist
+        k *= 2
+    return out
+
+
 # ── Handlers ─────────────────────────────────────────────────────────
 
 
-def handle_brain_search(query: str, limit: int, db_path: str) -> str:
+def handle_brain_search(query: str, limit: int, db_path: str, *,
+                        principal=OWNER, fields=None) -> str:
     from lib.embeddings import get_embedding, EmbeddingError
 
     try:
         embedding = get_embedding(query)
     except EmbeddingError as e:
         return f"Error: embedding service unavailable — {e}"
-    from lib.db import search_chunks
-    results = search_chunks(db_path, embedding, limit=limit)
+    from lib.vectorstore import get_store
+    store = get_store(db_path)
+    if _principal_unrestricted(principal):
+        results = store.search(embedding, k=limit, allowed_layers=principal.read_layers)
+    else:
+        results = _paginated_visible_search(store, embedding, limit, principal, fields)
     return _format_results(results)
 
 
-def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: str) -> str:
-    from lib.db import get_chunk_embeddings, search_chunks
+def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: str, *,
+                         principal=OWNER, fields=None) -> str:
+    from lib.vectorstore import get_store
 
+    store = get_store(db_path)
     full_path = _resolve_path(filepath, brain_path)
-    vectors = get_chunk_embeddings(db_path, full_path)
+    if not _principal_unrestricted(principal) and os.path.isfile(full_path):
+        # Oracle-safety on the TARGET: a forbidden-but-indexed note must return
+        # the exact same string as a genuinely-absent one below, or a restricted
+        # caller could learn "it's indexed" just from asking what's related to it.
+        if not visible(_meta_for_path(full_path), principal, fields):
+            return f"No embeddings found for {filepath}. Has it been indexed?"
+    vectors = store.get_chunk_embeddings(full_path)
     if not vectors:
-        vectors = get_chunk_embeddings(db_path, filepath)
+        vectors = store.get_chunk_embeddings(filepath)
     if not vectors:
         return f"No embeddings found for {filepath}. Has it been indexed?"
     mean_vec = list(np.mean(vectors, axis=0))
-    candidates = search_chunks(db_path, mean_vec, limit=limit * _CANDIDATE_MULTIPLIER)
-    seen: set[str] = set()
-    deduped: list[dict] = []
-    for r in candidates:
-        fp = r["filepath"]
-        if fp in (full_path, filepath) or fp in seen:
-            continue
-        seen.add(fp)
-        deduped.append(r)
-        if len(deduped) == limit:
-            break
+    exclude = {full_path, filepath}
+    if _principal_unrestricted(principal):
+        candidates = store.search(mean_vec, k=limit * _CANDIDATE_MULTIPLIER,
+                                  allowed_layers=principal.read_layers)
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for r in candidates:
+            fp = r["filepath"]
+            if fp in exclude or fp in seen:
+                continue
+            seen.add(fp)
+            deduped.append(r)
+            if len(deduped) == limit:
+                break
+        return _format_results(deduped)
+    deduped = _paginated_visible_search(
+        store, mean_vec, limit, principal, fields,
+        exclude=exclude, initial_k=limit * _CANDIDATE_MULTIPLIER,
+    )
     return _format_results(deduped)
 
 
@@ -132,8 +241,11 @@ def _walk_brain_files(brain_path: str) -> list[str]:
     return candidates
 
 
-def _collect_field_values(brain_path: str, field: str) -> set[str]:
-    """Scan all notes and return the set of distinct values for a frontmatter field."""
+def _collect_field_values(brain_path: str, field: str, *,
+                          principal=OWNER, fields=None) -> set[str]:
+    """Scan all VISIBLE notes and return the set of distinct values for a frontmatter
+    field — restricted to `principal`-visible notes so a no-match hint can never
+    enumerate a value that only exists on a forbidden note."""
     values: set[str] = set()
     for fpath in _walk_brain_files(brain_path):
         try:
@@ -142,6 +254,8 @@ def _collect_field_values(brain_path: str, field: str) -> set[str]:
         except Exception:
             continue
         meta, _ = extract_frontmatter(content)
+        if not visible(meta, principal, fields):
+            continue
         val = meta.get(field)
         if isinstance(val, str) and val:
             values.add(val)
@@ -150,11 +264,13 @@ def _collect_field_values(brain_path: str, field: str) -> set[str]:
     return values
 
 
-def _no_match_hint(filters: dict[str, Optional[str]], brain_path: str) -> str:
-    """Build a helpful 'no matches' message listing existing values for filtered fields."""
+def _no_match_hint(filters: dict[str, Optional[str]], brain_path: str, *,
+                   principal=OWNER, fields=None) -> str:
+    """Build a helpful 'no matches' message listing existing values for filtered
+    fields — computed only over notes visible to `principal`."""
     parts = ["No notes matched the query."]
     for field in filters:
-        existing = sorted(_collect_field_values(brain_path, field))
+        existing = sorted(_collect_field_values(brain_path, field, principal=principal, fields=fields))
         if existing:
             parts.append(f"Existing {field} values: {', '.join(existing)}")
     return "\n".join(parts)
@@ -169,16 +285,24 @@ def handle_brain_query(
     created_after: Optional[str] = None,
     created_before: Optional[str] = None,
     field_specs: Optional[list] = None,
+    principal=OWNER,
 ) -> str:
-    fields = {k: v for k, v in (fields or {}).items() if v}
+    # `fields` here is the pre-existing "promoted field values" filter dict (e.g.
+    # {"status": "draft"}) — unrelated to the profile Field *specs* used for the
+    # visibility predicate, which travel separately as `field_specs` (already
+    # threaded through by both callers). Guarded with isinstance so a caller that
+    # passes field specs here by mistake degrades to "no promoted filters" rather
+    # than crashing on `.items()`.
+    field_filters = ({k: v for k, v in fields.items() if v}
+                     if isinstance(fields, dict) else {})
     where = {k: v for k, v in (where or {}).items() if v}
 
-    collision = set(fields) & set(where)
+    collision = set(field_filters) & set(where)
     if collision:
         return ("Invalid filter: " + ", ".join(sorted(collision)) +
                 " given both as a promoted field and in 'where'")
 
-    all_filters = {**fields, **where}
+    all_filters = {**field_filters, **where}
     kind_of = {f.name: f.kind for f in (field_specs or [])}
 
     if tag:
@@ -201,7 +325,13 @@ def handle_brain_query(
 
     # Frontmatter filters require walking files directly — zk's FTS won't match them.
     # tag uses zk's native --tag filter, which is index-backed and correct.
-    has_frontmatter_filter = bool(all_filters) or bool(created_after or created_before)
+    # A restricted principal ALSO forces this branch (even with zero filters): it's
+    # the one that reads each candidate's frontmatter, so it's where visible() gets
+    # applied. This deliberately routes restricted queries away from the "list
+    # everything via zk" path below, which never reads frontmatter and would
+    # otherwise leak notes the caller isn't allowed to see.
+    restricted = not _principal_unrestricted(principal)
+    has_frontmatter_filter = bool(all_filters) or bool(created_after or created_before) or restricted
 
     if has_frontmatter_filter:
         # Collect candidates via zk if a tag filter is also present, otherwise all files
@@ -240,6 +370,8 @@ def handle_brain_query(
             except Exception:
                 continue
             meta, _ = extract_frontmatter(content)
+            if not visible(meta, principal, field_specs):
+                continue
             skip = False
             for field, value in all_filters.items():
                 mv = meta.get(field)
@@ -273,10 +405,13 @@ def handle_brain_query(
             files.append(os.path.relpath(fpath, brain_path))
 
         if not files:
-            return _no_match_hint(all_filters, brain_path)
+            return _no_match_hint(all_filters, brain_path, principal=principal, fields=field_specs)
         return "\n".join(sorted(files))
 
-    # tag-only query: use zk with index refresh
+    # tag-only query: use zk with index refresh. Only unrestricted (owner /
+    # non-RBAC) principals ever reach this branch — `restricted` above forces
+    # anyone else into the frontmatter-reading branch — but the visible() gate
+    # is applied here too, defensively, in case that routing ever changes.
     try:
         subprocess.run(
             ["zk", "index", "--quiet"],
@@ -297,16 +432,45 @@ def handle_brain_query(
     if result.returncode != 0:
         return f"zk list failed: {result.stderr}"
     files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
+    if not _principal_unrestricted(principal):
+        visible_files = []
+        for f in files:
+            full = os.path.join(brain_path, f)
+            try:
+                with open(full, "r", encoding="utf-8") as fh:
+                    content = fh.read()
+            except Exception:
+                continue
+            meta, _ = extract_frontmatter(content)
+            if visible(meta, principal, field_specs):
+                visible_files.append(f)
+        files = visible_files
     if not files:
         return "No notes matched the query."
     return "\n".join(files)
 
 
-def handle_brain_write(filepath: str, content: str, brain_path: str) -> str:
+def handle_brain_write(filepath: str, content: str, brain_path: str, *,
+                       principal=OWNER, fields=None) -> str:
     """Write content to a file inside the brain."""
     full_path = _resolve_path(filepath, brain_path)
     if err := _check_within_brain(full_path, brain_path):
         return err
+    new_meta, _ = extract_frontmatter(content)
+    if os.path.isfile(full_path):
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                existing_content = f.read()
+        except Exception as e:
+            return f"Error reading {filepath}: {e}"
+        old_meta, _ = extract_frontmatter(existing_content)
+        if not visible(old_meta, principal, fields):
+            # Oracle-safe: can't even see the target being overwritten.
+            return f"File not found: {filepath}"
+    else:
+        old_meta = new_meta  # brand-new path — only the incoming layer gates
+    if not can_write_transition(old_meta, new_meta, principal):
+        return f"Not authorized to write {filepath}"
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     try:
         with open(full_path, "w", encoding="utf-8") as f:
@@ -316,18 +480,26 @@ def handle_brain_write(filepath: str, content: str, brain_path: str) -> str:
         return f"Error writing {filepath}: {e}"
 
 
-def handle_brain_read(filepath: str, brain_path: str) -> str:
+def handle_brain_read(filepath: str, brain_path: str, *,
+                      principal=OWNER, fields=None) -> str:
     """Read a file from the brain and return its full content."""
     full_path = _resolve_path(filepath, brain_path)
     if err := _check_within_brain(full_path, brain_path):
         return err
     if not os.path.isfile(full_path):
-        return f"File not found: {filepath}"
+        return "File not found"
     try:
         with open(full_path, "r", encoding="utf-8") as f:
-            return f.read()
+            content = f.read()
     except Exception as e:
         return f"Error reading {filepath}: {e}"
+    meta, _ = extract_frontmatter(content)
+    if not visible(meta, principal, fields):
+        # Oracle-safe: a fixed string, carrying no path-specific detail, so a
+        # forbidden note is byte-for-byte indistinguishable from an absent one —
+        # even across two DIFFERENT requested paths, not just the same one.
+        return "File not found"
+    return content
 
 
 def _list_template_names(brain_path: str) -> list[str]:
@@ -356,7 +528,8 @@ def handle_brain_templates(brain_path: str) -> str:
 
 
 def handle_brain_create(
-    template: str, title: str, brain_path: str, directory: Optional[str] = None
+    template: str, title: str, brain_path: str, directory: Optional[str] = None, *,
+    principal=OWNER, fields=None,
 ) -> str:
     # Validate template is a bare filename — no path separators or traversal
     if not title or not title.strip():
@@ -366,6 +539,16 @@ def handle_brain_create(
         return "Invalid template name: must be a bare filename with no path separators"
     if not template.endswith(".md"):
         template = template + ".md"
+    tpl_path = os.path.join(brain_path, ".zk", "templates", template)
+    tpl_layer = None
+    if os.path.isfile(tpl_path):
+        try:
+            with open(tpl_path, "r", encoding="utf-8") as f:
+                tpl_layer = _template_layer(f.read())
+        except Exception:
+            tpl_layer = None
+    if not can_write({"layer": tpl_layer}, principal):
+        return f"Not authorized to create from template: {template}"
     if directory:
         target_dir = directory if directory.startswith("/") else os.path.join(brain_path, directory)
         if err := _check_within_brain(target_dir, brain_path, label="directory"):
@@ -391,7 +574,8 @@ def handle_brain_create(
     return result.stdout.strip()
 
 
-def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
+def handle_brain_edit(filepath: str, op: str, brain_path: str, *,
+                      principal=OWNER, fields=None, **kwargs) -> str:
     """Surgical edit on a note. Returns a status message.
 
     Supported ops: update_frontmatter, replace_section, append_to_section,
@@ -408,11 +592,22 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
     except Exception as e:
         return f"Error reading {filepath}: {e}"
 
+    old_meta, _ = extract_frontmatter(text)
+    if not visible(old_meta, principal, fields):
+        # Oracle-safe: can't even see the target being edited.
+        return f"File not found: {filepath}"
+
+    # Apply the edit op to produce the candidate text IN MEMORY first — never
+    # persist before authorizing. The post-edit frontmatter is authoritative
+    # for every op (including update_frontmatter): a raw-text op like
+    # find_replace/replace_lines can rewrite the `layer:` line just as surely
+    # as update_frontmatter can, so gating on a stale `new_meta = old_meta`
+    # would let those ops smuggle a layer escalation past the check.
     if op == "update_frontmatter":
         frontmatter = kwargs.get("frontmatter")
         if not frontmatter:
             return "Error: 'frontmatter' dict required for update_frontmatter"
-        text = update_frontmatter(text, frontmatter)
+        candidate = update_frontmatter(text, frontmatter)
         detail = f"Updated frontmatter keys: {', '.join(frontmatter.keys())}"
 
     elif op in ("replace_section", "append_to_section", "prepend_to_section"):
@@ -421,11 +616,11 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
             return f"Error: 'heading' required for {op}"
         body = kwargs.get("body", "")
         if op == "replace_section":
-            text, found = replace_section(text, heading, body)
+            candidate, found = replace_section(text, heading, body)
         elif op == "append_to_section":
-            text, found = append_to_section(text, heading, body)
+            candidate, found = append_to_section(text, heading, body)
         else:
-            text, found = prepend_to_section(text, heading, body)
+            candidate, found = prepend_to_section(text, heading, body)
         if not found:
             return f"Section not found: {heading}"
         detail = f"{op}: {heading}"
@@ -435,7 +630,7 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
         end_line = kwargs.get("end_line")
         if start_line is None or end_line is None:
             return "Error: 'start_line' and 'end_line' required"
-        text, err = replace_lines(text, start_line, end_line, kwargs.get("replacement", ""))
+        candidate, err = replace_lines(text, start_line, end_line, kwargs.get("replacement", ""))
         if err:
             return f"Error: {err}"
         detail = f"Replaced lines [{start_line}, {end_line})"
@@ -444,20 +639,20 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
         find_str = kwargs.get("find")
         if find_str is None:
             return "Error: 'find' required for find_replace"
-        text, n = find_replace(
+        candidate, n = find_replace(
             text, find_str, kwargs.get("replace", ""),
             regex=kwargs.get("regex", False),
             count=kwargs.get("count", 0),
         )
         if n == -1:
-            return text  # text is the error message
+            return candidate  # candidate is the error message
         detail = f"Replaced {n} occurrence(s)"
 
     elif op == "insert_wikilink":
         target = kwargs.get("target")
         if not target:
             return "Error: 'target' required for insert_wikilink"
-        text, inserted = insert_wikilink(
+        candidate, inserted = insert_wikilink(
             text, target, context_heading=kwargs.get("context_heading"),
         )
         if not inserted:
@@ -467,28 +662,47 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, **kwargs) -> str:
     else:
         return f"Unknown edit operation: {op}"
 
+    new_meta, _ = extract_frontmatter(candidate)
+    if not can_write_transition(old_meta, new_meta, principal):
+        return f"Not authorized to write {filepath}"
+
     try:
         with open(full_path, "w", encoding="utf-8") as f:
-            f.write(text)
+            f.write(candidate)
     except Exception as e:
         return f"Error writing {filepath}: {e}"
     return detail
 
 
-def handle_brain_backlinks(filepath: str, brain_path: str) -> str:
+def handle_brain_backlinks(filepath: str, brain_path: str, *,
+                           principal=OWNER, fields=None) -> str:
     """Find notes that link to *filepath* via [[wikilinks]]."""
     full_path = _resolve_path(filepath, brain_path)
     if err := _check_within_brain(full_path, brain_path):
         return err
     rel = _relative_path(full_path, brain_path)
     results = find_backlinks(full_path, brain_path)
+    if not _principal_unrestricted(principal):
+        visible_results = []
+        for r in results:
+            src_full = os.path.join(brain_path, r["filepath"])
+            try:
+                with open(src_full, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception:
+                continue  # unreadable source note — never surface it (fail closed)
+            meta, _ = extract_frontmatter(content)
+            if visible(meta, principal, fields):
+                visible_results.append(r)
+        results = visible_results
     if not results:
         return "No backlinks found."
     lines = [f"- **{r['title']}** ({r['filepath']})" for r in results]
     return f"Backlinks to {rel}:\n" + "\n".join(lines)
 
 
-def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
+def handle_brain_trash(filepath: str, brain_path: str, db_path: str, *,
+                       principal=OWNER, fields=None) -> str:
     """Move a note to .trash/, clean from DB, report orphaned backlinks."""
     full_path = _resolve_path(filepath, brain_path)
     if err := _check_within_brain(full_path, brain_path):
@@ -497,6 +711,18 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         return f"Error: only .md files can be trashed, got: {filepath}"
     if not os.path.isfile(full_path):
         return f"Error: file not found: {filepath}"
+
+    try:
+        with open(full_path, "r", encoding="utf-8") as f:
+            existing_content = f.read()
+    except Exception as e:
+        return f"Error reading {filepath}: {e}"
+    old_meta, _ = extract_frontmatter(existing_content)
+    if not visible(old_meta, principal, fields):
+        # Oracle-safe: can't even see the target being trashed.
+        return f"File not found: {filepath}"
+    if not can_write(old_meta, principal):
+        return f"Not authorized to write {filepath}"
 
     rel = _relative_path(full_path, brain_path)
     trash_root = os.path.join(brain_path, ".trash")
@@ -511,6 +737,13 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
         origin_sidecar = os.path.splitext(dest_path)[0] + ".origin"
 
     backlinks = find_backlinks(full_path, brain_path)
+    if backlinks and not _principal_unrestricted(principal):
+        # M3: don't leak paths of invisible notes to a restricted trasher via
+        # the orphaned-backlinks report.
+        backlinks = [
+            b for b in backlinks
+            if visible(_meta_for_path(os.path.join(brain_path, b["filepath"])), principal, fields)
+        ]
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     os.rename(full_path, dest_path)
 
@@ -534,7 +767,8 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str) -> str:
     )
 
 
-def handle_brain_restore(trash_path: str, brain_path: str) -> str:
+def handle_brain_restore(trash_path: str, brain_path: str, *,
+                         principal=OWNER, fields=None) -> str:
     """Restore a note from .trash/ back to its original location."""
     normalized = trash_path.lstrip("/")
     if not normalized.startswith(".trash/"):
@@ -547,6 +781,19 @@ def handle_brain_restore(trash_path: str, brain_path: str) -> str:
         return err
     if not os.path.isfile(full_trash_path):
         return f"Error: file not found in trash: {trash_path}"
+
+    try:
+        with open(full_trash_path, "r", encoding="utf-8") as f:
+            existing_content = f.read()
+    except Exception as e:
+        return f"Error reading {trash_path}: {e}"
+    old_meta, _ = extract_frontmatter(existing_content)
+    if not visible(old_meta, principal, fields):
+        # Oracle-safe: identical to the genuinely-absent-from-trash branch
+        # above — a restricted caller can neither resurrect nor enumerate it.
+        return f"Error: file not found in trash: {trash_path}"
+    if not can_write(old_meta, principal):
+        return f"Not authorized to write {trash_path}"
 
     origin_sidecar = os.path.splitext(full_trash_path)[0] + ".origin"
     if os.path.isfile(origin_sidecar):

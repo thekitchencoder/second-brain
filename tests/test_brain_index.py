@@ -184,3 +184,41 @@ def test_purge_stale_paths_also_deletes_embeddings(brain, mock_embed):
     conn.close()
     assert chunk_rows == 0
     assert embedding_rows == 0, f"orphaned embeddings remain: {embedding_rows}"
+
+
+def test_layer_filtered_search_paginates(tmp_path):
+    from lib.db import init_db, upsert_chunk, search_chunks_in_layers
+    db = str(tmp_path / "e.db")
+    init_db(db, 3)
+    # 10 'secret' chunks near the query, 1 'fiction' chunk further away
+    for i in range(10):
+        upsert_chunk(db, f"s{i}.md", 0, "secret", f"h{i}", [1.0, 0.0, 0.0],
+                     {"layer": "secret"})
+    upsert_chunk(db, "f.md", 0, "fic", "hf", [0.9, 0.1, 0.0], {"layer": "fiction"})
+    # asking for k=1 in the 'fiction' layer must find f.md even though 10 nearer
+    # 'secret' chunks would fill a naive top-k
+    res = search_chunks_in_layers(db, [1.0, 0.0, 0.0], k=1, allowed_layers=["fiction"])
+    assert len(res) == 1 and res[0]["filepath"] == "f.md"
+
+
+def test_init_db_migrates_pre_layer_schema(tmp_path):
+    """An existing chunks table with no `layer` column must be migrated in place,
+    not left to fail on the first upsert (finding 2). A fresh-tmp-db test would
+    mask this — build the OLD schema explicitly."""
+    import sqlite3, sqlite_vec
+    from lib.db import init_db, upsert_chunk
+    db = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db)
+    conn.enable_load_extension(True); sqlite_vec.load(conn)
+    conn.executescript("""
+        CREATE TABLE chunks (id INTEGER PRIMARY KEY, filepath TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL, content TEXT NOT NULL, content_hash TEXT NOT NULL,
+            title TEXT, type TEXT, status TEXT, created TEXT, tags TEXT, scope TEXT,
+            UNIQUE(filepath, chunk_index));
+        CREATE VIRTUAL TABLE embeddings USING vec0(embedding float[3]);
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO meta VALUES ('embedding_dim', '3');
+    """)
+    conn.commit(); conn.close()
+    init_db(db, 3)                                  # must ALTER-add `layer`, not crash
+    upsert_chunk(db, "a.md", 0, "x", "h", [1.0, 0.0, 0.0], {"layer": "fiction"})  # must succeed

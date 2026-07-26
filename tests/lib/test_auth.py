@@ -26,15 +26,16 @@ def test_mode_none_returns_owner_without_token(monkeypatch):
 
 
 def test_role_layers_reads_role_spec():
-    assert role_layers(_rbac(), "fenn-agent") == ("fiction",)
-    assert role_layers(_rbac(), "owner") == ("*",)
+    assert role_layers(_rbac(), "fenn-agent", "read") == ("fiction",)
+    assert role_layers(_rbac(), "owner", "read") == ("*",)
 
 
 def test_static_token_resolves_to_principal(monkeypatch):
     monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"fenn-agent": "s3cret"}))
     prof = _profile("oauth", _rbac())
     p = resolve_principal("s3cret", prof, None)
-    assert p == Principal(id="fenn-agent", role="fenn-agent", layers=("fiction",), kind="static")
+    assert p == Principal(id="fenn-agent", role="fenn-agent",
+                          read_layers=("fiction",), write_layers=("fiction",), kind="static")
 
 
 def test_wrong_token_is_denied(monkeypatch):
@@ -99,7 +100,8 @@ def test_jwt_maps_identity_to_role(settings, monkeypatch):
     prof = _profile("oauth", rbac)
     token = settings.issue_jwt("chris@example.com", extra={"email": "chris@example.com"})
     p = resolve_principal(token, prof, settings)
-    assert p == Principal(id="chris@example.com", role="owner", layers=("*",), kind="oauth")
+    assert p == Principal(id="chris@example.com", role="owner",
+                          read_layers=("*",), write_layers=("*",), kind="oauth")
 
 
 def test_jwt_unknown_subject_uses_default_role(settings, monkeypatch):
@@ -169,3 +171,19 @@ def test_refresh_token_rejected_as_bearer(settings, monkeypatch):
                                  extra={"email": "chris@example.com", "typ": "refresh"},
                                  ttl=30 * 86400)
     assert resolve_principal(refresh, prof, settings) is None
+
+
+def test_owner_has_all_layers():
+    from lib.auth import OWNER
+    assert OWNER.read_layers == ("*",) and OWNER.write_layers == ("*",)
+
+
+def test_static_principal_gets_role_layers(monkeypatch):
+    import json
+    monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"agent": "s3cret"}))
+    rbac = Rbac(default_role=None,
+                roles={"agent": {"read": ["fiction"], "write": []}},
+                identities={}, principals={"agent": "agent"})
+    prof = _profile("oauth", rbac)
+    p = resolve_principal("s3cret", prof, None)
+    assert p.read_layers == ("fiction",) and p.write_layers == ()

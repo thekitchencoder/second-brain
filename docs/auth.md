@@ -9,6 +9,11 @@ This page is a deploy guide. For the design rationale (why the brain is its own
 authorization server, why stdio stays unauthenticated, why there's no "act as
 role X" parameter), see `docs/superpowers/plans/2026-07-25-brain-profile-plan-d-auth.md`.
 
+Auth answers "who is this caller?" For "which notes can that caller read or
+write?" — the role-based `[auth.rbac.roles]` `read`/`write` layer model, field
+visibility, and the deploy/re-index steps that come with turning it on — see
+[docs/rbac.md](rbac.md).
+
 ## The `mode` gate
 
 ```toml

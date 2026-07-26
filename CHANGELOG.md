@@ -41,9 +41,30 @@ bundled `ace` profile is the zero-config, offline default.
   no-store headers. Note: enabling this build's stateful refresh invalidates any
   refresh tokens issued by a prior build — they lack a stored jti and force one
   re-auth.
+- **Content visibility / RBAC (Seam 7)** — role-based read/write layers
+  (`[auth.rbac.roles]` `read`/`write`) plus fine-grained `allow`/`deny`
+  visibility fields, enforced at a single choke point
+  (`visible()`/`can_write()`) across every read-egress path (`brain_read`,
+  `brain_query`, `brain_search`, `brain_related`, `brain_backlinks`) and every
+  write path (`brain_write`, `brain_edit`, `brain_trash`, `brain_restore`),
+  on both the MCP handlers and the REST routes. Deny-by-default on missing
+  layer; a forbidden note is oracle-safe — indistinguishable from a genuinely
+  absent one on every surface. A write additionally gates on the
+  layer-mutation guard: it may not move a note into (or out of) a layer the
+  caller can't write, checked against the actual post-edit frontmatter so a
+  raw-text edit can't smuggle a layer change past the check. Semantic search
+  filters recall-correctly on a `layer` column added to the chunks index
+  (existing brains migrate the column automatically; re-index to populate it
+  after turning RBAC on). `mode = "none"` (the bundled `ace` profile's
+  setting) remains a total no-op — see [docs/rbac.md](docs/rbac.md) for the
+  deploy guide, including the folder-homogeneous-layers profile-authoring
+  rule that keeps the write-path existence oracle unreachable in a
+  well-formed profile. The retrieval/audit log and an admin UI are deferred,
+  store-backed follow-ups, not part of this build.
 
-**Still to come:** content visibility / RBAC enforcement built on the auth gate (Seam 7),
-and public, forkable profile repositories (community profiles).
+**Still to come:** public, forkable profile repositories (community profiles),
+plus the store-backed RBAC-tier follow-ups (retrieval/audit log, admin UI,
+a `PolicyProvider` that generalizes beyond the bundled sqlite-vec store).
 
 ### Backward compatibility
 

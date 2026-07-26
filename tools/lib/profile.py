@@ -25,7 +25,7 @@ class Field:
     kind: str                       # "scalar" | "list"
     label: str
     query_desc: str | None = None
-    visibility: bool = False
+    visibility: str = ""            # "" | "allow" | "deny"
 
 
 @dataclass(frozen=True)
@@ -76,6 +76,14 @@ def _load_auth(auth_raw: dict) -> Auth:
     ))
 
 
+def role_action_layers(rbac, role: str, action: str) -> list:
+    """Return the read/write layer list for a role. Legacy `layers` satisfies both."""
+    spec = (rbac.roles or {}).get(role) or {}
+    if action in spec:
+        return list(spec[action] or [])
+    return list(spec.get("layers", []))
+
+
 def load_profile(profile_dir: str) -> Profile:
     manifest_path = os.path.join(profile_dir, "profile.toml")
     if not os.path.isfile(manifest_path):
@@ -100,7 +108,7 @@ def load_profile(profile_dir: str) -> Profile:
             kind=spec.get("kind", "scalar"),
             label=spec.get("label", name),
             query_desc=spec.get("query_desc"),
-            visibility=bool(spec.get("visibility", False)),
+            visibility=(spec.get("visibility") if isinstance(spec.get("visibility"), str) else ""),
         ))
 
     skills = data.get("skills", {})
@@ -135,6 +143,10 @@ def validate_profile(profile: Profile, profile_dir: str) -> list[str]:
             errors.append(
                 f"field '{f.name}' collides with a reserved query parameter "
                 f"({', '.join(sorted(_RESERVED_FIELD_NAMES))})")
+        if f.visibility and f.visibility not in ("allow", "deny"):
+            errors.append(f"field '{f.name}' visibility must be 'allow' or 'deny', got {f.visibility!r}")
+        if f.visibility and f.kind != "list":
+            errors.append(f"visibility field '{f.name}' must be kind='list'")
 
     default_template = profile.zk.get("default_template")
     if default_template:
@@ -174,9 +186,11 @@ def _validate_auth(auth) -> list[str]:
     if not roles:
         errs.append("[auth.rbac].roles is empty — at least one role required for oauth mode")
     for role, spec in roles.items():
-        layers = (spec or {}).get("layers", [])
-        if not isinstance(layers, list) or not all(isinstance(x, str) for x in layers):
-            errs.append(f"role '{role}' layers must be a list of strings")
+        for key in ("read", "write", "layers"):
+            if key in (spec or {}):
+                v = spec[key]
+                if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+                    errs.append(f"role '{role}' {key} must be a list of strings")
     for subject, role in (rbac.identities or {}).items():
         if role not in roles:
             errs.append(f"identity '{subject}' maps to unknown role '{role}'")

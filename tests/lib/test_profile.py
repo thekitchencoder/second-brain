@@ -59,7 +59,7 @@ def test_load_profile_parses_fields_with_query_desc(tmp_path):
     by_name = {f.name: f for f in p.fields}
     assert by_name["status"] == Field(name="status", kind="scalar", label="Note status")
     assert by_name["intensity"].query_desc == "Filter by intensity: focus, ongoing, simmering"
-    assert by_name["intensity"].visibility is False
+    assert by_name["intensity"].visibility == ""
 
 
 def test_load_profile_mcp_server_explicit(tmp_path):
