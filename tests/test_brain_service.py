@@ -486,7 +486,7 @@ def brain_with_note(tmp_path):
 
 
 def test_trash_moves_file_to_trash_dir(brain_with_note):
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         result = handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=":memory:"
         )
@@ -500,18 +500,32 @@ def test_trash_cleans_db(brain_with_note):
     os.makedirs(str(brain_with_note / ".ai"), exist_ok=True)
     open(db_path, "w").close()  # create empty file so os.path.exists passes
     expected_full_path = str(brain_with_note / "Cards" / "foo.md")
-    with patch("lib.brain.delete_file_chunks") as mock_del:
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks") as mock_del:
         handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=db_path
         )
-    mock_del.assert_called_once_with(db_path, expected_full_path)
+    mock_del.assert_called_once_with(expected_full_path)
+
+
+def test_trash_cleans_index_on_pgvector_even_without_local_db(brain_with_note, monkeypatch):
+    monkeypatch.setenv("BRAIN_VECTOR_STORE", "pgvector")
+    db_path = str(brain_with_note / ".ai" / "embeddings.db")
+    assert not os.path.exists(db_path)  # server backend has no local db file
+    expected_full_path = str(brain_with_note / "Cards" / "foo.md")
+    mock_store = MagicMock()
+    with patch("lib.vectorstore.get_store", return_value=mock_store) as mock_get_store:
+        handle_brain_trash(
+            "Cards/foo.md", str(brain_with_note), db_path=db_path
+        )
+    mock_get_store.assert_called_once_with(db_path)
+    mock_store.delete_file_chunks.assert_called_once_with(expected_full_path)
 
 
 def test_trash_returns_backlink_info(brain_with_note):
     linker = brain_with_note / "Efforts" / "baz.md"
     linker.parent.mkdir(parents=True, exist_ok=True)
     linker.write_text("---\ntitle: Baz\n---\n\nSee [[foo]].")
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         result = handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=":memory:"
         )
@@ -520,7 +534,7 @@ def test_trash_returns_backlink_info(brain_with_note):
 
 
 def test_trash_no_backlinks_reports_none(brain_with_note):
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         result = handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=":memory:"
         )
@@ -549,7 +563,7 @@ def test_trash_collision_creates_datestamp_suffix_and_origin_sidecar(brain_with_
     trash_dest = brain_with_note / ".trash" / "Cards"
     trash_dest.mkdir(parents=True, exist_ok=True)
     (trash_dest / "foo.md").write_text("old trash")
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=":memory:"
         )
@@ -563,7 +577,7 @@ def test_trash_collision_creates_datestamp_suffix_and_origin_sidecar(brain_with_
 # ── brain_restore ─────────────────────────────────────────────────────
 
 def test_restore_moves_file_back(brain_with_note):
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=":memory:"
         )
@@ -590,7 +604,7 @@ def test_restore_with_origin_sidecar(brain_with_note):
 
 
 def test_restore_conflict_returns_error(brain_with_note):
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         handle_brain_trash(
             "Cards/foo.md", str(brain_with_note), db_path=":memory:"
         )

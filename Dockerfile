@@ -69,7 +69,6 @@ RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-profile \
               /usr/local/lib/brain-tools/brain-template-sync \
               /usr/local/lib/brain-tools/entrypoint.sh \
-              /usr/local/lib/brain-tools/entrypoint-ui.sh \
               /usr/local/lib/brain-tools/setup.sh
 
 # Shell environment — copy to both coder and root (container runs as root)

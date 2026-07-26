@@ -11,7 +11,6 @@ from typing import Optional
 import numpy as np
 
 from lib.config import Config
-from lib.db import delete_file_chunks
 from lib.clean import extract_frontmatter
 from lib.auth import OWNER
 from lib.visibility import visible, can_write, can_write_transition
@@ -751,8 +750,14 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str, *,
         with open(origin_sidecar, "w", encoding="utf-8") as f:
             f.write(rel)
 
-    if os.path.exists(db_path):
-        delete_file_chunks(db_path, full_path)
+    # Remove the note's chunks from the index. For the embedded sqlite
+    # backend, only if the db file exists (connecting would create an
+    # empty one); server backends (pgvector) have no local file — always
+    # delete there.
+    backend = os.environ.get("BRAIN_VECTOR_STORE", "sqlite")
+    if backend != "sqlite" or os.path.exists(db_path):
+        from lib.vectorstore import get_store
+        get_store(db_path).delete_file_chunks(full_path)
     trash_rel = _relative_path(dest_path, brain_path)
 
     if backlinks:

@@ -2,14 +2,15 @@
 
 This guide covers everything you need to know about running and using the second-brain.
 
-## Two Images
+## Image tiers
 
 | Image | Use when | Size |
 |-------|----------|------|
 | `kitchencoder/second-brain:latest` | MCP server + brain tools only — Claude Code plugin, API access, no browser UI needed | ~600MB |
-| `kitchencoder/second-brain:ui` | Adds code-server web IDE — open `http://localhost:7780` in your browser | ~1.5GB |
+| `kitchencoder/second-brain:oauth` | Same as `:latest`, twin tag for deployments that key images by auth mode | ~600MB |
+| `kitchencoder/second-brain:full` | Adds `psycopg` for the Postgres/pgvector full-stack tier | ~600MB |
 
-**Base image (MCP only):**
+**Core image:**
 ```bash
 docker run -d --name brain \
   -v ~/Documents/brain:/brain \
@@ -17,18 +18,12 @@ docker run -d --name brain \
   kitchencoder/second-brain:latest
 ```
 
-**UI image (includes code-server web IDE):**
-```bash
-docker run -d --name brain \
-  -v ~/Documents/brain:/brain \
-  -p 7778:7778 -p 7779:7779 -p 7780:7780 \
-  kitchencoder/second-brain:ui
-```
+Want a browser IDE on top, or vectors in Postgres instead of the embedded SQLite index? See [Recipes](#recipes) below.
 
 ## Upgrading
 
 ```bash
-docker pull kitchencoder/second-brain:latest   # or :ui
+docker pull kitchencoder/second-brain:latest
 docker rm -f second-brain
 # Re-run your docker run command
 ```
@@ -37,50 +32,12 @@ Your brain data, Claude config, and shell history are preserved in named volumes
 
 No re-indexing required unless the release notes say otherwise.
 
-## Browser UI (code-server)
+## Recipes
 
-> Requires the `kitchencoder/second-brain:ui` image.
+Two build-your-own layers on top of the core image, kept out of the published image set so their own release cadences don't leak into this one:
 
-A browser-based VS Code at `http://localhost:7778` — no password, single-user. This is the primary interface when running at a machine where a local editor can't be installed.
-
-**Features:**
-- Full VS Code in the browser with your brain open
-- Foam extension — `[[wikilink]]` navigation, backlinks panel, graph view
-- Integrated terminal running zsh with all brain tools on PATH (`brain-search`, `zk`, `brain-index`, etc.)
-- Claude Code pre-configured in the terminal — connects to any Anthropic-compatible provider via your brain's `.env`
-
-**Claude Code in the terminal:**
-
-Claude Code is pre-wired with:
-- Docker Model Runner as the LLM backend (no Anthropic API key needed)
-- Brain MCP server pre-approved — all brain tools available immediately
-- All skills from the active profile (global + vault tiers) seeded into `~/.claude/skills/` — see [Custom profiles](#custom-profiles) below
-
-```bash
-# In the VS Code integrated terminal, Claude Code is ready:
-claude
-```
-
-**Configuring the model:**
-
-Claude Code reads `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_MODEL` from the container environment. Set them in `.env` and restart:
-
-```bash
-# .env
-ANTHROPIC_BASE_URL=http://model-runner.docker.internal
-ANTHROPIC_AUTH_TOKEN=ollama
-ANTHROPIC_MODEL=docker.io/ai/qwen2.5:7B-Q4_0
-```
-
-To switch to real Claude, remove `ANTHROPIC_BASE_URL` and set a real `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`.
-
-**Persistent state:**
-
-| Volume | Contents |
-|---|---|
-| `second-brain-claude` | Claude Code user config (`~/.claude/`) — settings, session history |
-| `second-brain-code-server` | VS Code UI state — open tabs, panel layout |
-| `second-brain-zsh` | Zsh history across sessions |
+- [Browser IDE (code-server)](recipes/code-server.md) — the `:ui` image is deprecated (last published: 1.1.x); this recipe shows the thin `FROM kitchencoder/second-brain:latest` layer that replaces it, with Claude Code pre-installed in the terminal.
+- [Full-stack tier (Postgres/pgvector) via docker-compose](recipes/full-stack-compose.md) — run the `:full` image beside Postgres so vectors (and later, policy/audit data) live in one stateful service.
 
 ## Host aliases
 
@@ -197,10 +154,10 @@ brain-template-sync zk-to-obsidian
 | `BRAIN_MCP_PORT` | `7780` | Port for MCP HTTP mode |
 | `BRAIN_API_HOST` | `0.0.0.0` | Bind address for the REST API |
 | `BRAIN_API_PORT` | `7779` | Port for the REST API |
-| `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint (**`:ui` image only**) |
-| `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token (**`:ui` image only**) |
-| `ANTHROPIC_MODEL` | — | Claude Code model name (**`:ui` image only**) |
-| `BRAVE_API_KEY` | — | Enables web search in Claude Code via Brave Search MCP (**`:ui` image only**) |
+| `ANTHROPIC_BASE_URL` | Docker Model Runner | Claude Code LLM endpoint (**only relevant if you build the [code-server recipe](recipes/code-server.md)**) |
+| `ANTHROPIC_AUTH_TOKEN` | — | Claude Code auth token (**code-server recipe only**) |
+| `ANTHROPIC_MODEL` | — | Claude Code model name (**code-server recipe only**) |
+| `BRAVE_API_KEY` | — | Enables web search in Claude Code via Brave Search MCP (**code-server recipe only**) |
 
 ### Choosing an embedding model
 

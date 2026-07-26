@@ -226,10 +226,25 @@ happen to carry a stray `layer:` or `known_by:` key ace never declares) under
 behave identically whether or not a `principal=` argument is passed at all —
 the parameter default **is** `OWNER`, so no pre-RBAC caller needs to change.
 
+## Running on Postgres (full-stack tier)
+
+RBAC's coarse layer check is enforced by the store as well as by
+`lib/visibility.py` — `search_chunks_in_layers` needs a real, current `layer`
+column to deny across the board (see
+[Re-indexing: populating `layer`](#re-indexing-populating-layer) above). That
+holds regardless of which vector store backs the index. The Postgres/pgvector
+full-stack tier (`kitchencoder/second-brain:full`, `BRAIN_VECTOR_STORE=pgvector`
++ `BRAIN_DATABASE_URL`) is a drop-in replacement for the embedded sqlite-vec
+store — see the [compose recipe](recipes/full-stack-compose.md) for the
+`docker-compose.yml` and env vars. Whichever store you run, re-index after
+turning on `[auth.rbac]` so `layer` is populated before you rely on it.
+
 ## See also
 
 - [docs/auth.md](auth.md) — the token/principal resolution layer this feature
   is built on (bearer tokens, OAuth 2.1, static principals).
+- [docs/recipes/full-stack-compose.md](recipes/full-stack-compose.md) — running
+  the full-stack (Postgres/pgvector) tier this page's store-side wall applies to.
 - `tests/test_visibility_enforcement.py` — end-to-end enforcement tests across
   both the shared `handle_brain_*` handlers and the REST routes in
   `tools/brain_api.py`, plus the anti-drift signature checks that fail CI if a

@@ -7,7 +7,6 @@ This guide is for developers who want to modify the second-brain, add new skills
 - `tools/lib/`: Python library for brain tools (indexing, search, MCP logic).
 - `profiles/ace/`: The bundled default profile — its `skills/global/` (MCP-only) and `skills/vault/` (filesystem-access) skills, `templates/`, hooks, and `profile.toml`. Skills and templates are sourced from the active profile, not top-level dirs.
 - `claude/seed/`: The container's own Claude Code config seed.
-- `code-server/`: Browser IDE configuration.
 - `scripts/`: Initialization and helper scripts.
 
 ## Local Development
@@ -23,12 +22,6 @@ task build
 The dev container bind-mounts the local `tools/lib` and `profiles/ace/templates` folders into the container, allowing for live-reloading of logic and template changes.
 ```bash
 task up
-```
-
-### 3. Build and run the UI image
-```bash
-task build-ui
-task up-ui
 ```
 
 ## Developing Skills
@@ -57,11 +50,13 @@ Integration tests usually require the container to be running.
 
 ## Building for Release
 
-The `Dockerfile` and `Dockerfile.ui` are used to build the production images. 
-- `Dockerfile`: Base image with MCP server and brain tools.
-- `Dockerfile.ui`: Adds code-server on top of the base image.
+The `Dockerfile` and `Dockerfile.full` are used to build the production images.
+- `Dockerfile`: Base image with MCP server and brain tools — published as `:latest` (plus `:oauth` twin tags).
+- `Dockerfile.full`: Adds `psycopg` on top of the base image, for the Postgres/pgvector tier — published as `:full`.
 
-When building the UI image, you can specify the base image:
+When building the full-stack image, you can specify the base image:
 ```bash
-docker build -f Dockerfile.ui --build-arg BASE_IMAGE=kitchencoder/second-brain:latest -t kitchencoder/second-brain:ui .
+docker build -f Dockerfile.full --build-arg BASE_IMAGE=kitchencoder/second-brain:latest -t kitchencoder/second-brain:full .
 ```
+
+Want a browser IDE instead? The `:ui` image is no longer published — see the [code-server recipe](recipes/code-server.md) for a build-your-own layer.

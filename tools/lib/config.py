@@ -11,6 +11,8 @@ class Config:
         )
         self.embedding_model = os.environ.get("EMBEDDING_MODEL", "mxbai-embed-large")
         self.brain_path = os.environ.get("BRAIN_PATH", "/brain")
+        self.vector_store = os.environ.get("BRAIN_VECTOR_STORE", "sqlite")
+        self.database_url = os.environ.get("BRAIN_DATABASE_URL", "")
         self._profile = None
 
     @property

@@ -410,7 +410,7 @@ def test_create_note_traversal_template_returns_400(client):
 
 def test_trash_note(client, sample_note, brain_env):
     brain_dir, _ = brain_env
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         resp = client.post(f"/api/notes/{sample_note}/trash")
     assert resp.status_code == 200
     data = resp.json()
@@ -420,14 +420,14 @@ def test_trash_note(client, sample_note, brain_env):
 
 
 def test_trash_nonexistent_returns_404(client):
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         resp = client.post("/api/notes/nonexistent.md/trash")
     assert resp.status_code == 404
 
 
 def test_restore_note(client, sample_note, brain_env):
     brain_dir, _ = brain_env
-    with patch("lib.brain.delete_file_chunks"):
+    with patch("lib.vectorstore.SqliteVecStore.delete_file_chunks"):
         client.post(f"/api/notes/{sample_note}/trash")
     trash_path = f".trash/{sample_note}"
     resp = client.post(f"/api/notes/{trash_path}/restore")
@@ -455,7 +455,7 @@ def test_search_returns_structured(client):
         }
     ]
     with patch("lib.embeddings.get_embedding", return_value=[0.1] * 1024), \
-         patch("lib.db.search_chunks", return_value=mock_results):
+         patch("lib.vectorstore._db_search", return_value=mock_results):
         resp = client.get("/api/search", params={"q": "test"})
     assert resp.status_code == 200
     data = resp.json()

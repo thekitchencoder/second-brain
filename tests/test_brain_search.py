@@ -32,7 +32,7 @@ def test_format_result_includes_key_fields(mock_results):
 
 def test_search_calls_db(mock_results):
     with patch("brain_search.get_embedding", return_value=[0.1] * 1024), \
-         patch("brain_search.search_chunks", return_value=mock_results) as mock_db:
+         patch("lib.vectorstore.SqliteVecStore.search", return_value=mock_results) as mock_db:
         results = search("test query", db_path="/tmp/fake.db", limit=3)
         mock_db.assert_called_once()
         assert len(results) == 1

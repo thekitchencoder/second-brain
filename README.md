@@ -18,7 +18,7 @@ docker run --rm -it \
   kitchencoder/second-brain:latest \
   brain-init
 
-# 3. Start the container (choose :ui for browser-based VS Code IDE)
+# 3. Start the container
 docker run -d --name second-brain --restart unless-stopped \
   -v ~/Documents/brain:/brain \
   -v second-brain-claude:/home/coder/.claude \
@@ -29,14 +29,17 @@ docker run -d --name second-brain --restart unless-stopped \
 
 The `brain-init` wizard will guide you through picking your model provider and embedding model (presets for Docker Model Runner, Ollama, LM Studio, and Anthropic API).
 
+**Tiers:** the quickstart above is the core image (MCP + brain tools only). Want a browser IDE on top? See the [code-server recipe](docs/recipes/code-server.md). Want vectors in Postgres instead of the embedded SQLite index? See the [full-stack compose recipe](docs/recipes/full-stack-compose.md).
+
 ## Documentation Index
 
 ### For Users
-- [User Guide](docs/user-guide.md): Installation, Browser UI, Host configuration, and how to use the brain.
+- [User Guide](docs/user-guide.md): Installation, Host configuration, and how to use the brain.
 - [Brain Guide](docs/brain-guide.md): Philosophy and structure of your brain (folders, frontmatter, tags).
 - [MCP Server](docs/mcp-server.md): How to connect your brain to AI clients (Claude Code, Claude Desktop, Open WebUI, etc).
 - [Brain Skills](docs/skills.md): Detailed list of all AI skills available for managing your brain.
 - [Authentication](docs/auth.md): Gate the REST API and MCP HTTP transport behind static tokens or OAuth 2.1 (`profile.auth.mode`, default off).
+- [Recipes](docs/recipes/): Browser IDE (code-server) and full-stack (Postgres/pgvector) layers on top of the core image.
 
 ### For Developers
 - [Development Guide](docs/development.md): How to build the image, run in development mode, and create new skills or tools.

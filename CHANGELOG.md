@@ -10,6 +10,18 @@ reaches its end state. See the [Roadmap](README.md#roadmap).
 
 ## [Unreleased]
 
+### Added
+- `PgVectorStore`: PostgreSQL/pgvector index backend for the full-stack tier,
+  selected via `BRAIN_VECTOR_STORE=pgvector` + `BRAIN_DATABASE_URL`. Exact-scan
+  search with native layer filtering (recall-correct by construction).
+- Image tiers: `:oauth` (twin tags of core) and `:full` (adds psycopg);
+  compose recipe in `docs/recipes/full-stack-compose.md`.
+
+### Deprecated
+- The `:ui` image is no longer published. Build your own thin layer —
+  recipe in `docs/recipes/code-server.md`. Existing `:ui` tags remain
+  on Docker Hub.
+
 ### Profile seam — one engine, many brains (in progress)
 
 A significant refactor that extracts everything brain-specific out of the engine and

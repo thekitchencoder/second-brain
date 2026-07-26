@@ -15,27 +15,6 @@ services:
     tty: true
     restart: unless-stopped
 
-  brain-ui:
-    image: kitchencoder/second-brain:ui
-    container_name: brain-ui
-    profiles:
-      - ui
-    volumes:
-      - ${BRAIN_HOST_PATH}:/brain
-      - claude-data:/home/coder/.claude
-      - code-server-data:/home/coder/.local/share/code-server
-      - zsh-data:/home/coder/.zsh-data
-    env_file:
-      - .env
-    ports:
-      - "${BRAIN_API_PORT:-7779}:7779"
-      - "${BRAIN_MCP_PORT:-7780}:7780"
-      - "${CODE_SERVER_PORT:-7778}:7778"
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-
 volumes:
   claude-data:
-  code-server-data:
   zsh-data:

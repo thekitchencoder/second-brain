@@ -6,6 +6,7 @@ from unittest.mock import patch
 from brain_index import index_brain, index_file
 from lib.db import init_db, upsert_chunk
 from lib.embeddings import EmbeddingError
+from lib.vectorstore import SqliteVecStore
 
 
 @pytest.fixture
@@ -36,18 +37,19 @@ def mock_embed():
 
 def test_index_file_creates_chunks(brain, mock_embed):
     db_path = str(brain / ".ai" / "embeddings.db")
-    from lib.db import init_db
-    init_db(db_path, embedding_dim=1024)
+    store = SqliteVecStore(db_path)
+    store.init(embedding_dim=1024)
 
     filepath = str(brain / "test-note.md")
-    index_file(filepath, db_path)
+    index_file(filepath, store)
 
     mock_embed.assert_called()
 
 
 def test_index_brain_processes_markdown_files(brain, mock_embed):
     db_path = str(brain / ".ai" / "embeddings.db")
-    index_brain(str(brain), db_path)
+    store = SqliteVecStore(db_path)
+    index_brain(str(brain), store)
     mock_embed.assert_called()
 
 
@@ -57,7 +59,8 @@ def test_index_brain_skips_dotdirectories(brain, mock_embed):
     (obsidian_dir / "config.json").write_text("{}")
 
     db_path = str(brain / ".ai" / "embeddings.db")
-    index_brain(str(brain), db_path)
+    store = SqliteVecStore(db_path)
+    index_brain(str(brain), store)
 
     # Should only have been called for the one real note
     assert mock_embed.call_count >= 1
@@ -65,15 +68,15 @@ def test_index_brain_skips_dotdirectories(brain, mock_embed):
 
 def test_index_file_skips_unchanged_chunks(brain, mock_embed):
     db_path = str(brain / ".ai" / "embeddings.db")
-    from lib.db import init_db
-    init_db(db_path, embedding_dim=1024)
+    store = SqliteVecStore(db_path)
+    store.init(embedding_dim=1024)
 
     filepath = str(brain / "test-note.md")
-    index_file(filepath, db_path)
+    index_file(filepath, store)
     first_call_count = mock_embed.call_count
 
     # Second index of same file with same content — should not re-embed
-    index_file(filepath, db_path)
+    index_file(filepath, store)
     assert mock_embed.call_count == first_call_count
 
 
@@ -82,8 +85,8 @@ def test_watch_brain_handles_deleted_file(brain, mock_embed):
     from brain_index import watch_brain
 
     db_path = str(brain / ".ai" / "embeddings.db")
-    from lib.db import init_db
-    init_db(db_path, embedding_dim=1024)
+    store = SqliteVecStore(db_path)
+    store.init(embedding_dim=1024)
 
     gone_path = str(brain / "Pain Tracker \u2014 Project Notes.md")  # em dash, never exists on disk
 
@@ -93,15 +96,16 @@ def test_watch_brain_handles_deleted_file(brain, mock_embed):
     # patch watchfiles.watch because watch_brain does `from watchfiles import watch` locally
     with patch("watchfiles.watch", return_value=iter(fake_changes)):
         with patch("brain_index.purge_stale_paths") as mock_purge:
-            watch_brain(str(brain), db_path)
+            watch_brain(str(brain), store)
 
-    mock_purge.assert_called_once_with(db_path)
+    mock_purge.assert_called_once_with(store)
 
 
 def test_index_file_prunes_excess_chunks_when_file_shrinks(brain, mock_embed):
     """When a note shrinks, chunks beyond the new length must be removed."""
     db_path = str(brain / ".ai" / "embeddings.db")
-    init_db(db_path, embedding_dim=1024)
+    store = SqliteVecStore(db_path)
+    store.init(embedding_dim=1024)
 
     filepath = str(brain / "test-note.md")
 
@@ -112,7 +116,7 @@ def test_index_file_prunes_excess_chunks_when_file_shrinks(brain, mock_embed):
                       "created": "2026-03-16", "tags": [], "scope": None})
 
     # Re-index the actual file (1 chunk)
-    index_file(filepath, db_path)
+    index_file(filepath, store)
 
     conn = sqlite3.connect(db_path)
     rows = conn.execute("SELECT chunk_index FROM chunks WHERE filepath=?", (filepath,)).fetchall()
@@ -146,6 +150,7 @@ def test_watch_filter_excludes_trash_paths(brain, mock_embed):
     from brain_index import watch_brain
 
     db_path = ":memory:"
+    store = SqliteVecStore(db_path)
 
     trash_path = str(brain / ".trash" / "Cards" / "deleted-note.md")
     fake_changes = [{(None, trash_path)}]
@@ -156,7 +161,7 @@ def test_watch_filter_excludes_trash_paths(brain, mock_embed):
     with patch.dict(sys.modules, {"watchfiles": fake_watchfiles}):
         with patch("brain_index.index_file") as mock_index, \
              patch("brain_index.purge_stale_paths") as mock_purge:
-            watch_brain(str(brain), db_path)
+            watch_brain(str(brain), store)
 
     mock_index.assert_not_called()
     mock_purge.assert_not_called()
@@ -165,17 +170,18 @@ def test_watch_filter_excludes_trash_paths(brain, mock_embed):
 def test_purge_stale_paths_also_deletes_embeddings(brain, mock_embed):
     """Deleting stale chunk rows must also remove the corresponding embeddings rows."""
     db_path = str(brain / ".ai" / "embeddings.db")
-    init_db(db_path, embedding_dim=1024)
+    store = SqliteVecStore(db_path)
+    store.init(embedding_dim=1024)
 
     # Index a note so it has a chunk + embedding row
     filepath = str(brain / "test-note.md")
-    index_file(filepath, db_path)
+    index_file(filepath, store)
 
     # Remove the file from disk
     (brain / "test-note.md").unlink()
 
     from brain_index import purge_stale_paths
-    purge_stale_paths(db_path)
+    purge_stale_paths(store)
 
     from lib.db import _connect
     conn = _connect(db_path)

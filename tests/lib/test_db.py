@@ -2,7 +2,7 @@
 import json
 import sqlite3
 import pytest
-from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings, delete_file_chunks, _connect
+from lib.db import init_db, upsert_chunk, search_chunks, get_chunk_embeddings, delete_file_chunks, _connect, get_file_hashes, prune_file_chunks, list_filepaths
 
 
 @pytest.fixture
@@ -141,3 +141,49 @@ def test_delete_file_chunks_does_not_affect_other_filepaths(db_path):
     ).fetchone()[0]
     conn.close()
     assert bar_rows == 1
+
+
+def _seed(db_path, filepath, n, dim=4):
+    for i in range(n):
+        upsert_chunk(
+            db_path=db_path, filepath=filepath, chunk_index=i,
+            content=f"chunk {i}", content_hash=f"hash{i}",
+            embedding=[float(i)] * dim,
+            meta={"title": "T", "type": "note", "status": None,
+                  "created": "2026-07-26", "tags": [], "scope": None,
+                  "layer": "work"},
+        )
+
+
+def test_get_file_hashes_returns_index_to_hash_map(db_path):
+    init_db(db_path, embedding_dim=4)
+    _seed(db_path, "notes/a.md", 3)
+    assert get_file_hashes(db_path, "notes/a.md") == {0: "hash0", 1: "hash1", 2: "hash2"}
+
+
+def test_get_file_hashes_empty_for_unknown_file(db_path):
+    init_db(db_path, embedding_dim=4)
+    assert get_file_hashes(db_path, "notes/missing.md") == {}
+
+
+def test_prune_file_chunks_removes_tail_and_embeddings(db_path):
+    init_db(db_path, embedding_dim=4)
+    _seed(db_path, "notes/a.md", 4)
+    prune_file_chunks(db_path, "notes/a.md", keep_below=2)
+    assert set(get_file_hashes(db_path, "notes/a.md")) == {0, 1}
+    # embeddings for pruned ids are gone too (search only finds 2 chunks)
+    assert len(search_chunks(db_path, [0.0] * 4, limit=10)) == 2
+
+
+def test_prune_file_chunks_noop_when_nothing_beyond(db_path):
+    init_db(db_path, embedding_dim=4)
+    _seed(db_path, "notes/a.md", 2)
+    prune_file_chunks(db_path, "notes/a.md", keep_below=5)
+    assert set(get_file_hashes(db_path, "notes/a.md")) == {0, 1}
+
+
+def test_list_filepaths_distinct(db_path):
+    init_db(db_path, embedding_dim=4)
+    _seed(db_path, "notes/a.md", 2)
+    _seed(db_path, "notes/b.md", 1)
+    assert sorted(list_filepaths(db_path)) == ["notes/a.md", "notes/b.md"]

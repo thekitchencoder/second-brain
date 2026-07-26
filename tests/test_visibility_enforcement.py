@@ -278,10 +278,10 @@ def test_related_rest_route_forbidden_target_matches_absent_target(monkeypatch, 
     import json, importlib
     monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"fenn": "s3cret"}))
     monkeypatch.setenv("BRAIN_AUTH_SIGNING_KEY", _signing_key())
-    # No real embeddings db in either tmp brain — patch the module-level function
-    # the route imports at call time so neither branch touches sqlite, keeping
-    # this test host-runnable with no sqlite-vec.
-    monkeypatch.setattr("lib.db.get_chunk_embeddings", lambda *a, **kw: [])
+    # No real embeddings db in either tmp brain — patch the store the route
+    # constructs at call time so neither branch touches sqlite, keeping this
+    # test host-runnable with no sqlite-vec.
+    monkeypatch.setattr("lib.vectorstore.get_store", lambda db_path: _FakeStore([]))
 
     monkeypatch.setenv("BRAIN_PATH", _fiction_brain(tmp_path / "with-secret", create_secret=True))
     import brain_api

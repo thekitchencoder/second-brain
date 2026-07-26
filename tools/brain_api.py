@@ -502,20 +502,19 @@ def search_notes(
     principal: Principal = Depends(require_principal),
 ):
     """Semantic vector search across all brain notes."""
-    from lib.db import search_chunks
     from lib.embeddings import get_embedding, EmbeddingError
+    from lib.vectorstore import get_store
 
     try:
         embedding = get_embedding(q)
     except EmbeddingError as e:
         raise HTTPException(503, f"Embedding service unavailable: {e}")
+    store = get_store(_cfg.db_path)
     if _principal_unrestricted(principal):
-        results = search_chunks(_cfg.db_path, embedding, limit=limit)
+        results = store.search(embedding, k=limit)
     else:
-        from lib.vectorstore import get_store
         fields = _cfg.load_profile().fields
-        results = _paginated_visible_search(get_store(_cfg.db_path), embedding, limit,
-                                            principal, fields)
+        results = _paginated_visible_search(store, embedding, limit, principal, fields)
     return [
         SearchResult(
             filepath=r["filepath"],
@@ -569,9 +568,10 @@ def list_notes(request: Request, tag: Optional[str] = None,
 def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
                    principal: Principal = Depends(require_principal)):
     """Find semantically related notes."""
-    from lib.db import search_chunks, get_chunk_embeddings
+    from lib.vectorstore import get_store
     import numpy as np
 
+    store = get_store(_cfg.db_path)
     full = _resolve(filepath)
     unrestricted = _principal_unrestricted(principal)
     fields = None if unrestricted else _cfg.load_profile().fields
@@ -580,16 +580,16 @@ def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
         # a forbidden-but-indexed note must 404 identically to an absent one.
         if not visible(_meta_for_path(full), principal, fields):
             raise HTTPException(404, f"No embeddings found for {filepath}")
-    vectors = get_chunk_embeddings(_cfg.db_path, full)
+    vectors = store.get_chunk_embeddings(full)
     if not vectors:
-        vectors = get_chunk_embeddings(_cfg.db_path, filepath)
+        vectors = store.get_chunk_embeddings(filepath)
     if not vectors:
         raise HTTPException(404, f"No embeddings found for {filepath}")
 
     mean_vec = list(np.mean(vectors, axis=0))
     exclude = {full, filepath}
     if unrestricted:
-        candidates = search_chunks(_cfg.db_path, mean_vec, limit=limit * 10)
+        candidates = store.search(mean_vec, k=limit * 10)
         seen: set[str] = set()
         raw_results = []
         for r in candidates:
@@ -601,8 +601,7 @@ def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
             if len(raw_results) == limit:
                 break
     else:
-        from lib.vectorstore import get_store
-        raw_results = _paginated_visible_search(get_store(_cfg.db_path), mean_vec, limit,
+        raw_results = _paginated_visible_search(store, mean_vec, limit,
                                                 principal, fields,
                                                 exclude=exclude, initial_k=limit * 10)
     return [

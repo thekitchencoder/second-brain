@@ -1,0 +1,10 @@
+# Full-stack tier: core + the PostgreSQL/pgvector driver.
+# Built FROM the versioned core image by docker-release.yml.
+ARG BASE_IMAGE=kitchencoder/second-brain:latest
+FROM ${BASE_IMAGE}
+
+LABEL version="1.1.0"
+
+COPY requirements-full.txt /tmp/requirements-full.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements-full.txt \
+    && rm /tmp/requirements-full.txt

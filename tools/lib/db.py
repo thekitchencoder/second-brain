@@ -234,3 +234,46 @@ def get_chunk_embeddings(db_path: str, filepath: str) -> list[list[float]]:
     finally:
         conn.close()
     return [list(struct.unpack(f"{len(row[0]) // 4}f", row[0])) for row in rows]
+
+
+def get_file_hashes(db_path: str, filepath: str) -> dict[int, str]:
+    """Return {chunk_index: content_hash} for all chunks of a file."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT chunk_index, content_hash FROM chunks WHERE filepath=?",
+            (filepath,)
+        ).fetchall()
+    finally:
+        conn.close()
+    return {row[0]: row[1] for row in rows}
+
+
+def prune_file_chunks(db_path: str, filepath: str, keep_below: int) -> None:
+    """Delete chunks (and embeddings) with chunk_index >= keep_below (file shrank)."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN")
+        stale_ids = [
+            row[0] for row in conn.execute(
+                "SELECT id FROM chunks WHERE filepath=? AND chunk_index >= ?",
+                (filepath, keep_below)
+            ).fetchall()
+        ]
+        if stale_ids:
+            placeholders = ",".join("?" * len(stale_ids))
+            conn.execute(f"DELETE FROM embeddings WHERE rowid IN ({placeholders})", stale_ids)
+            conn.execute(f"DELETE FROM chunks WHERE id IN ({placeholders})", stale_ids)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_filepaths(db_path: str) -> list[str]:
+    """Return the distinct filepaths present in the index."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute("SELECT DISTINCT filepath FROM chunks").fetchall()
+    finally:
+        conn.close()
+    return [row[0] for row in rows]

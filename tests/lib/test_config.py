@@ -38,3 +38,21 @@ def test_config_cors_from_env(monkeypatch):
     importlib.reload(lib.config)
     cfg = lib.config.Config()
     assert cfg.cors_origins == ["http://localhost:3000", "http://localhost:8080"]
+
+
+def test_config_vector_store_defaults(monkeypatch):
+    monkeypatch.delenv("BRAIN_VECTOR_STORE", raising=False)
+    monkeypatch.delenv("BRAIN_DATABASE_URL", raising=False)
+    from lib.config import Config
+    cfg = Config()
+    assert cfg.vector_store == "sqlite"
+    assert cfg.database_url == ""
+
+
+def test_config_vector_store_from_env(monkeypatch):
+    monkeypatch.setenv("BRAIN_VECTOR_STORE", "pgvector")
+    monkeypatch.setenv("BRAIN_DATABASE_URL", "postgresql://u:p@h:5432/brain")
+    from lib.config import Config
+    cfg = Config()
+    assert cfg.vector_store == "pgvector"
+    assert cfg.database_url == "postgresql://u:p@h:5432/brain"

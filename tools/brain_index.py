@@ -6,14 +6,13 @@ Usage:
 """
 import hashlib
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
 from lib.clean import chunk_text, clean_content, extract_frontmatter
 from lib.config import Config
-from lib.db import init_db, upsert_chunk
 from lib.embeddings import get_embedding, EmbeddingError
+from lib.vectorstore import get_store
 
 _cfg = None
 
@@ -25,7 +24,7 @@ def _get_cfg() -> "Config":
     return _cfg
 
 
-def index_file(filepath: str, db_path: str) -> None:
+def index_file(filepath: str, store) -> None:
     with open(filepath, "r", encoding="utf-8") as f:
         raw = f.read()
 
@@ -33,18 +32,7 @@ def index_file(filepath: str, db_path: str) -> None:
     cleaned = clean_content(content)
     chunks = chunk_text(cleaned)
 
-    # Read existing hashes upfront, then close connection
-    conn = sqlite3.connect(db_path)
-    try:
-        existing_hashes = {
-            row[0]: row[1]
-            for row in conn.execute(
-                "SELECT chunk_index, content_hash FROM chunks WHERE filepath=?",
-                (filepath,)
-            ).fetchall()
-        }
-    finally:
-        conn.close()
+    existing_hashes = store.get_file_hashes(filepath)
 
     for i, chunk in enumerate(chunks):
         content_hash = hashlib.sha256(chunk.encode()).hexdigest()
@@ -55,8 +43,7 @@ def index_file(filepath: str, db_path: str) -> None:
         except EmbeddingError as e:
             print(f"Warning: skipping chunk {i} of {filepath}: {e}", file=sys.stderr)
             continue
-        upsert_chunk(
-            db_path=db_path,
+        store.upsert_chunk(
             filepath=filepath,
             chunk_index=i,
             content=chunk,
@@ -66,22 +53,7 @@ def index_file(filepath: str, db_path: str) -> None:
         )
 
     # Prune chunks whose index is beyond the current chunk count (file shrank)
-    from lib.db import _connect as _vec_connect
-    vec_conn = _vec_connect(db_path)
-    try:
-        stale_ids = [
-            row[0] for row in vec_conn.execute(
-                "SELECT id FROM chunks WHERE filepath=? AND chunk_index >= ?",
-                (filepath, len(chunks))
-            ).fetchall()
-        ]
-        if stale_ids:
-            placeholders = ",".join("?" * len(stale_ids))
-            vec_conn.execute(f"DELETE FROM embeddings WHERE rowid IN ({placeholders})", stale_ids)
-            vec_conn.execute(f"DELETE FROM chunks WHERE id IN ({placeholders})", stale_ids)
-            vec_conn.commit()
-    finally:
-        vec_conn.close()
+    store.prune_file_chunks(filepath, keep_below=len(chunks))
 
 
 def detect_embedding_dim() -> int:
@@ -97,37 +69,18 @@ def detect_embedding_dim() -> int:
     return dim
 
 
-def purge_stale_paths(db_path: str) -> None:
-    """Remove DB entries for filepaths that no longer exist on disk."""
-    from lib.db import _connect as _vec_connect
-    conn = sqlite3.connect(db_path)
-    try:
-        rows = conn.execute("SELECT DISTINCT filepath FROM chunks").fetchall()
-        stale = [fp for (fp,) in rows if not os.path.isfile(fp)]
-    finally:
-        conn.close()
-    for fp in stale:
-        vec_conn = _vec_connect(db_path)
-        try:
-            stale_ids = [
-                row[0] for row in vec_conn.execute(
-                    "SELECT id FROM chunks WHERE filepath=?", (fp,)
-                ).fetchall()
-            ]
-            if stale_ids:
-                placeholders = ",".join("?" * len(stale_ids))
-                vec_conn.execute(f"DELETE FROM embeddings WHERE rowid IN ({placeholders})", stale_ids)
-            vec_conn.execute("DELETE FROM chunks WHERE filepath=?", (fp,))
-            vec_conn.commit()
+def purge_stale_paths(store) -> None:
+    """Remove index entries for filepaths that no longer exist on disk."""
+    for fp in store.list_filepaths():
+        if not os.path.isfile(fp):
+            store.delete_file_chunks(fp)
             print(f"Purged stale: {fp}", file=sys.stderr)
-        finally:
-            vec_conn.close()
 
 
-def index_brain(brain_path: str, db_path: str) -> None:
+def index_brain(brain_path: str, store) -> None:
     dim = detect_embedding_dim()
     try:
-        init_db(db_path, embedding_dim=dim, model=_get_cfg().embedding_model)
+        store.init(embedding_dim=dim, model=_get_cfg().embedding_model)
     except ValueError as e:
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)
@@ -139,11 +92,11 @@ def index_brain(brain_path: str, db_path: str) -> None:
                 continue
             filepath = os.path.join(root, fname)
             print(f"Indexing {filepath}", file=sys.stderr)
-            index_file(filepath, db_path)
-    purge_stale_paths(db_path)
+            index_file(filepath, store)
+    purge_stale_paths(store)
 
 
-def watch_brain(brain_path: str, db_path: str) -> None:
+def watch_brain(brain_path: str, store) -> None:
     from watchfiles import watch
     print(f"Watching {brain_path} for changes...", file=sys.stderr)
     # force_polling=True is required when /brain is a Docker volume mount from macOS.
@@ -155,10 +108,10 @@ def watch_brain(brain_path: str, db_path: str) -> None:
                 try:
                     if os.path.isfile(path):
                         print(f"Reindexing {path}", file=sys.stderr)
-                        index_file(path, db_path)
+                        index_file(path, store)
                     else:
                         print(f"Purging deleted/renamed: {path}", file=sys.stderr)
-                        purge_stale_paths(db_path)
+                        purge_stale_paths(store)
                 except Exception as e:
                     print(f"Error indexing {path}: {e}", file=sys.stderr)
 
@@ -169,13 +122,14 @@ def main() -> None:
     db_path = _get_cfg().db_path
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    store = get_store(db_path)
 
     if cmd == "run":
-        index_brain(brain_path, db_path)
+        index_brain(brain_path, store)
         print("Indexing complete.", file=sys.stderr)
     elif cmd == "watch":
-        index_brain(brain_path, db_path)
-        watch_brain(brain_path, db_path)
+        index_brain(brain_path, store)
+        watch_brain(brain_path, store)
     else:
         print(f"Unknown command: {cmd}", file=sys.stderr)
         sys.exit(1)

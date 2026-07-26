@@ -3,8 +3,8 @@
 import json
 
 from lib.config import Config
-from lib.db import search_chunks
 from lib.embeddings import get_embedding
+from lib.vectorstore import get_store
 
 _cfg = Config()
 
@@ -28,7 +28,7 @@ def format_result(result: dict) -> str:
 
 def search(query: str, db_path: str, limit: int = 5) -> list[dict]:
     embedding = get_embedding(query)
-    return search_chunks(db_path, embedding, limit=limit)
+    return get_store(db_path).search(embedding, k=limit)
 
 
 def main():
