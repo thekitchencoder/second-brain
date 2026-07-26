@@ -31,9 +31,19 @@ bundled `ace` profile is the zero-config, offline default.
   the profile's declared fields: the MCP `brain_query` schema and REST `list_notes`
   filters adapt per profile, with a generic `where` escape hatch and a fail-loud 400 on
   unknown REST filter fields.
+- **Auth gate (Seam 6)** — static per-principal bearer tokens + OAuth 2.1 authorization
+  server (PKCE S256, DCR, upstream-IdP federation), gated on `profile.auth.mode`; default
+  `none` is a no-op. See [docs/auth.md](docs/auth.md).
+- **Auth:** OAuth server hardened for internet exposure — a consent screen on the
+  authorization-code flow (closes an auth-code-injection path under open DCR), and
+  stateful refresh tokens with rotation, reuse detection, client binding, and an
+  RFC 7009 `/revoke` endpoint. The consent screen now sends anti-clickjacking and
+  no-store headers. Note: enabling this build's stateful refresh invalidates any
+  refresh tokens issued by a prior build — they lack a stored jti and force one
+  re-auth.
 
-**Still to come:** authentication/access-control as a profile dimension (`none` / OAuth /
-RBAC), and public, forkable profile repositories (community profiles).
+**Still to come:** content visibility / RBAC enforcement built on the auth gate (Seam 7),
+and public, forkable profile repositories (community profiles).
 
 ### Backward compatibility
 

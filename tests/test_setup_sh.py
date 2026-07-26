@@ -45,3 +45,18 @@ def test_setup_seeds_skills_from_profile(tmp_path):
     assert r.returncode == 0, r.stderr
     seeded = os.listdir(home / ".claude" / "skills")
     assert set(seeded) == {"brain-capture", "brain-save", "brain-daily"}
+
+
+def test_mcp_http_launch_inherits_auth_env():
+    """The background MCP-HTTP process must not scrub the environment.
+
+    BRAIN_AUTH_* is sourced from <brain>/.env by the entrypoint before
+    setup.sh runs; the MCP-HTTP background launch must inherit it rather
+    than being started under a scrubbed environment (e.g. `env -i`), or
+    oauth mode would break for the MCP transport.
+    """
+    setup = _setup_sh_path()
+    with open(setup) as f:
+        contents = f.read()
+    assert "BRAIN_MCP_TRANSPORT=http brain-mcp-server" in contents
+    assert "env -i" not in contents

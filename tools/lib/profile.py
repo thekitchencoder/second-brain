@@ -37,8 +37,17 @@ class Plugin:
 
 
 @dataclass(frozen=True)
+class Rbac:
+    default_role: str | None
+    roles: dict                     # role name -> {"layers": [...]}
+    identities: dict                # oauth subject (email/sub) -> role name
+    principals: dict                # static-bearer principal id -> role name
+
+
+@dataclass(frozen=True)
 class Auth:
     mode: str                       # "none" | "oauth"
+    rbac: Rbac | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +61,19 @@ class Profile:
     zk: dict
     auth: Auth
     origin: dict | None
+
+
+def _load_auth(auth_raw: dict) -> Auth:
+    mode = auth_raw.get("mode", "none")
+    rbac_raw = auth_raw.get("rbac")
+    if rbac_raw is None:
+        return Auth(mode=mode, rbac=None)
+    return Auth(mode=mode, rbac=Rbac(
+        default_role=rbac_raw.get("default_role"),
+        roles=rbac_raw.get("roles", {}),
+        identities=rbac_raw.get("identities", {}),
+        principals=rbac_raw.get("principals", {}),
+    ))
 
 
 def load_profile(profile_dir: str) -> Profile:
@@ -97,7 +119,7 @@ def load_profile(profile_dir: str) -> Profile:
             mcp_server=plugin_raw.get("mcp_server") or plugin_raw["name"],
         ),
         zk=data.get("zk", {}),
-        auth=Auth(mode=auth_raw.get("mode", "none")),
+        auth=_load_auth(auth_raw),
         origin=data.get("origin"),
     )
 
@@ -130,7 +152,40 @@ def validate_profile(profile: Profile, profile_dir: str) -> list[str]:
         if not os.path.isdir(os.path.join(profile_dir, "skills", "vault", skill)):
             errors.append(f"vault skill '{skill}' not found under skills/vault/")
 
+    errors.extend(_validate_auth(profile.auth))
+
     return errors
+
+
+_VALID_AUTH_MODES = {"none", "oauth"}
+
+
+def _validate_auth(auth) -> list[str]:
+    errs = []
+    if auth.mode not in _VALID_AUTH_MODES:
+        errs.append(f"auth.mode '{auth.mode}' invalid — must be one of {sorted(_VALID_AUTH_MODES)}")
+    if auth.mode != "oauth":
+        return errs
+    rbac = auth.rbac
+    if rbac is None:
+        errs.append("auth.mode = 'oauth' requires an [auth.rbac] block")
+        return errs
+    roles = rbac.roles or {}
+    if not roles:
+        errs.append("[auth.rbac].roles is empty — at least one role required for oauth mode")
+    for role, spec in roles.items():
+        layers = (spec or {}).get("layers", [])
+        if not isinstance(layers, list) or not all(isinstance(x, str) for x in layers):
+            errs.append(f"role '{role}' layers must be a list of strings")
+    for subject, role in (rbac.identities or {}).items():
+        if role not in roles:
+            errs.append(f"identity '{subject}' maps to unknown role '{role}'")
+    for pid, role in (rbac.principals or {}).items():
+        if role not in roles:
+            errs.append(f"principal '{pid}' maps to unknown role '{role}'")
+    if rbac.default_role is not None and rbac.default_role not in roles:
+        errs.append(f"default_role '{rbac.default_role}' is not a declared role")
+    return errs
 
 
 # Maps flat profile convention keys → (table, key) in zk config.

@@ -5,16 +5,29 @@ Sits between the MCP server and the filesystem, reuses the same handler
 functions, and adds structured responses + surgical edit support for a
 web UI with wiki-link navigation.
 """
+import html as _html
 import json
 import os
+import time
 from enum import Enum
 from typing import Optional
+from urllib.parse import urlencode, urlsplit
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from lib.auth import resolve_principal, AuthSettings, Principal
 from lib.config import Config
+from lib.oauth_server import (
+    AuthState,
+    ClientStore,
+    RefreshStore,
+    RegistrationError,
+    issue_auth_code,
+    redeem_auth_code,
+)
 from lib.clean import extract_frontmatter
 from lib.edit import (
     append_to_section,
@@ -41,6 +54,34 @@ from lib.brain import (
 )
 
 _cfg = Config()
+_auth_settings = AuthSettings.from_env()
+_client_store = ClientStore(os.path.join(_cfg.brain_path, ".ai", "oauth-clients.json"))
+_auth_state = AuthState()
+_refresh_store = RefreshStore(os.path.join(_cfg.brain_path, ".ai", "oauth-refresh.json"))
+
+
+def _bearer(request: Request) -> str | None:
+    header = request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        return header[len("Bearer "):].strip()
+    return None
+
+
+def _www_authenticate() -> str:
+    issuer = os.environ.get("BRAIN_AUTH_ISSUER", "")
+    meta = f"{issuer}/.well-known/oauth-protected-resource"
+    return f'Bearer resource_metadata="{meta}"'
+
+
+def require_principal(request: Request) -> Principal:
+    profile = _cfg.load_profile()
+    principal = resolve_principal(_bearer(request), profile, _auth_settings)
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Unauthorized",
+                            headers={"WWW-Authenticate": _www_authenticate()})
+    request.state.principal = principal
+    return principal
+
 
 app = FastAPI(
     title="Second Brain API",
@@ -54,6 +95,277 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+# The upstream authlib client uses Starlette session state for its CSRF `state`.
+# Add the session middleware once, in oauth mode only. Derive a dedicated secret
+# (never a raw PEM prefix — the first ~28 chars of a PKCS8 PEM are the constant
+# header) and hard-fail rather than silently defaulting to a dev value.
+if _cfg.load_profile().auth.mode == "oauth":
+    import hashlib
+    from starlette.middleware.sessions import SessionMiddleware
+    _signing = os.environ.get("BRAIN_AUTH_SIGNING_KEY")
+    if not _signing:
+        raise RuntimeError("BRAIN_AUTH_SIGNING_KEY is required when auth.mode = 'oauth'")
+    _session_secret = os.environ.get("BRAIN_AUTH_SESSION_SECRET") \
+        or hashlib.sha256(_signing.encode()).hexdigest()
+    app.add_middleware(SessionMiddleware, secret_key=_session_secret)
+
+
+def _oauth_enabled() -> bool:
+    return _cfg.load_profile().auth.mode == "oauth"
+
+
+@app.get("/.well-known/oauth-protected-resource")
+def protected_resource_metadata():
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    issuer = os.environ.get("BRAIN_AUTH_ISSUER", "")
+    return {
+        "resource": os.environ.get("BRAIN_AUTH_AUDIENCE", ""),
+        "authorization_servers": [issuer],
+        "bearer_methods_supported": ["header"],
+    }
+
+
+@app.get("/.well-known/oauth-authorization-server")
+def authorization_server_metadata():
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    issuer = os.environ.get("BRAIN_AUTH_ISSUER", "")
+    return {
+        "issuer": issuer,
+        "authorization_endpoint": f"{issuer}/authorize",
+        "token_endpoint": f"{issuer}/token",
+        "registration_endpoint": f"{issuer}/register",
+        "jwks_uri": f"{issuer}/.well-known/jwks.json",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],
+        "revocation_endpoint": f"{issuer}/revoke",
+    }
+
+
+@app.get("/.well-known/jwks.json")
+def jwks():
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    return _auth_settings.public_jwks()
+
+
+def _valid_redirect(uri: str) -> bool:
+    # https only, except loopback for local development.
+    parts = urlsplit(uri)
+    if parts.scheme == "https":
+        return True
+    if parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost"):
+        return True
+    return False
+
+
+@app.post("/register", status_code=201)
+async def register_client(request: Request):
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    metadata = await request.json()
+    uris = metadata.get("redirect_uris") or []
+    if not uris:
+        raise HTTPException(400, "redirect_uris required")
+    if not all(_valid_redirect(u) for u in uris):
+        raise HTTPException(400, "redirect_uris must be https (or loopback)")
+    try:
+        return _client_store.register(metadata)
+    except RegistrationError:
+        raise HTTPException(429, "client registration limit reached")
+
+
+# ── OAuth 2.1 authorization-code flow (PKCE S256, upstream federation) ─
+
+
+def _upstream_oauth():
+    """Lazily build the authlib upstream OIDC client from env."""
+    from authlib.integrations.starlette_client import OAuth
+    oauth = OAuth()
+    oauth.register(
+        name="upstream",
+        server_metadata_url=os.environ["BRAIN_AUTH_UPSTREAM_ISSUER"].rstrip("/")
+            + "/.well-known/openid-configuration",
+        client_id=os.environ["BRAIN_AUTH_UPSTREAM_CLIENT_ID"],
+        client_secret=os.environ["BRAIN_AUTH_UPSTREAM_CLIENT_SECRET"],
+        client_kwargs={"scope": "openid email"},
+    )
+    return oauth.create_client("upstream")
+
+
+@app.get("/authorize")
+async def authorize(request: Request):
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    q = request.query_params
+    client = _client_store.get(q.get("client_id", ""))
+    if client is None or q.get("redirect_uri") not in client["redirect_uris"]:
+        raise HTTPException(400, "invalid client or redirect_uri")
+    if q.get("code_challenge_method") != "S256" or not q.get("code_challenge"):
+        raise HTTPException(400, "PKCE S256 code_challenge required")
+    brain_state = os.urandom(16).hex()
+    try:
+        _auth_state.stash_pending(brain_state, client_id=q["client_id"],
+                                  redirect_uri=q["redirect_uri"],
+                                  code_challenge=q["code_challenge"],
+                                  client_state=q.get("state", ""))
+    except RegistrationError:
+        # Bounded store is at capacity even after sweeping expired entries —
+        # fail the request rather than growing memory without bound.
+        raise HTTPException(503, "authorization service busy, try again shortly")
+    upstream = _upstream_oauth()
+    callback = os.environ["BRAIN_AUTH_ISSUER"].rstrip("/") + "/callback"
+    return await upstream.authorize_redirect(request, callback, state=brain_state)
+
+
+def _consent_page(ticket: str, client_name: str, redirect_uri: str, subject: str) -> HTMLResponse:
+    cn = _html.escape(client_name or "(unnamed client)")
+    ru = _html.escape(redirect_uri)
+    sub = _html.escape(subject)
+    tk = _html.escape(ticket)
+    body = (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<title>Authorize access</title></head><body>"
+        "<h1>Authorize access to your brain</h1>"
+        f"<p><strong>{cn}</strong> is requesting access to your second-brain "
+        f"as <strong>{sub}</strong>.</p>"
+        f"<p>If you approve, an authorization code will be sent to:<br><code>{ru}</code></p>"
+        "<p>Only approve if you started this sign-in and recognise the destination above.</p>"
+        "<form method=\"post\" action=\"/consent\">"
+        f"<input type=\"hidden\" name=\"ticket\" value=\"{tk}\">"
+        "<button name=\"decision\" value=\"approve\" type=\"submit\">Approve</button> "
+        "<button name=\"decision\" value=\"deny\" type=\"submit\">Deny</button>"
+        "</form></body></html>"
+    )
+    return HTMLResponse(body, headers={
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy": "frame-ancestors 'none'",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+    })
+
+
+@app.get("/callback")
+async def callback(request: Request):
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    upstream = _upstream_oauth()
+    token = await upstream.authorize_access_token(request)
+    userinfo = token.get("userinfo") or await upstream.userinfo(token=token)
+    subject = userinfo.get("email")
+    pending = _auth_state.pop_pending(request.query_params.get("state", ""))
+    if not subject or pending is None:
+        raise HTTPException(400, "upstream login failed")
+    client = _client_store.get(pending["client_id"]) or {}
+    ticket = _auth_settings.issue_consent({
+        "client_id": pending["client_id"],
+        "redirect_uri": pending["redirect_uri"],
+        "code_challenge": pending["code_challenge"],
+        "client_state": pending["client_state"],
+        "subject": subject,
+    })
+    return _consent_page(ticket, client.get("client_name", ""),
+                         pending["redirect_uri"], subject)
+
+
+@app.post("/consent")
+async def consent(request: Request):
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    form = await request.form()
+    ticket = _auth_settings.verify_consent(form.get("ticket", ""))
+    if ticket is None:
+        raise HTTPException(400, "invalid or expired consent request")
+    redirect_uri = ticket["redirect_uri"]
+    sep = "&" if "?" in redirect_uri else "?"
+    if form.get("decision") != "approve":
+        query = urlencode({"error": "access_denied", "state": ticket.get("client_state", "")})
+        return RedirectResponse(f"{redirect_uri}{sep}{query}", status_code=303)
+    try:
+        code = issue_auth_code(_auth_state, client_id=ticket["client_id"],
+                               redirect_uri=redirect_uri,
+                               code_challenge=ticket["code_challenge"],
+                               subject=ticket["subject"])
+    except RegistrationError:
+        raise HTTPException(503, "authorization service busy, try again shortly")
+    query = urlencode({"code": code, "state": ticket.get("client_state", "")})
+    return RedirectResponse(f"{redirect_uri}{sep}{query}", status_code=303)
+
+
+@app.post("/token")
+async def token(request: Request):
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    form = await request.form()
+    grant = form.get("grant_type")
+    _REFRESH_TTL = 30 * 86400
+    if grant == "authorization_code":
+        client_id = form.get("client_id", "")
+        subject = redeem_auth_code(_auth_state, code=form.get("code", ""),
+                                   client_id=client_id,
+                                   redirect_uri=form.get("redirect_uri", ""),
+                                   code_verifier=form.get("code_verifier", ""))
+        if subject is None:
+            raise HTTPException(400, "invalid_grant")
+        access = _auth_settings.issue_jwt(subject, {"email": subject})
+        try:
+            jti, _ = _refresh_store.issue(subject, client_id, ttl=_REFRESH_TTL)
+        except RegistrationError:
+            raise HTTPException(503, "authorization service busy, try again shortly")
+        refresh = _auth_settings.issue_jwt(
+            subject, {"email": subject, "typ": "refresh", "jti": jti, "client_id": client_id},
+            ttl=_REFRESH_TTL)
+        return {"access_token": access, "token_type": "Bearer", "expires_in": 3600,
+                "refresh_token": refresh}
+    if grant == "refresh_token":
+        claims = _auth_settings.validate_jwt(form.get("refresh_token", ""))
+        if claims is None or claims.get("typ") != "refresh":
+            raise HTTPException(400, "invalid_grant")
+        jti = claims.get("jti")
+        token_client = claims.get("client_id")
+        # client binding: the presenting client must own the token
+        if not jti or not token_client or token_client != form.get("client_id", ""):
+            raise HTTPException(400, "invalid_grant")
+        rec = _refresh_store.get(jti)
+        if rec is None or rec.get("exp", 0) < int(time.time()) or rec.get("client_id") != token_client:
+            raise HTTPException(400, "invalid_grant")
+        if rec.get("revoked"):
+            # a retired token is being replayed → treat as theft, kill the chain
+            _refresh_store.revoke_all_for(rec.get("subject"), rec.get("client_id"))
+            raise HTTPException(400, "invalid_grant")
+        subject = rec.get("subject")
+        if not subject:
+            raise HTTPException(400, "invalid_grant")
+        try:
+            new_jti, _ = _refresh_store.rotate(jti, subject, token_client, ttl=_REFRESH_TTL)
+        except RegistrationError:
+            raise HTTPException(503, "authorization service busy, try again shortly")
+        access = _auth_settings.issue_jwt(subject, {"email": claims.get("email", subject)})
+        new_refresh = _auth_settings.issue_jwt(
+            subject, {"email": claims.get("email", subject), "typ": "refresh",
+                      "jti": new_jti, "client_id": token_client}, ttl=_REFRESH_TTL)
+        return {"access_token": access, "token_type": "Bearer", "expires_in": 3600,
+                "refresh_token": new_refresh}
+    raise HTTPException(400, "unsupported_grant_type")
+
+
+@app.post("/revoke")
+async def revoke_token(request: Request):
+    if not _oauth_enabled():
+        raise HTTPException(404, "Not found")
+    form = await request.form()
+    claims = _auth_settings.validate_jwt(form.get("token", ""))
+    # RFC 7009: return 200 regardless of token validity (no scanning oracle);
+    # only actually revoke a valid refresh token owned by the presenting client.
+    if claims and claims.get("typ") == "refresh":
+        jti = claims.get("jti")
+        if jti and claims.get("client_id") == form.get("client_id", ""):
+            _refresh_store.revoke(jti)
+    return {}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -182,6 +494,7 @@ class BacklinkEntry(BaseModel):
 def search_notes(
     q: str = Query(..., description="Semantic search query"),
     limit: int = Query(5, ge=1, le=50),
+    principal: Principal = Depends(require_principal),
 ):
     """Semantic vector search across all brain notes."""
     from lib.db import search_chunks
@@ -213,7 +526,8 @@ _STABLE_QUERY_PARAMS = {"tag", "created_after", "created_before", "where"}
 @app.get("/api/notes", response_model=list[str])
 def list_notes(request: Request, tag: Optional[str] = None,
                created_after: Optional[str] = None, created_before: Optional[str] = None,
-               where: Optional[str] = None):
+               where: Optional[str] = None,
+               principal: Principal = Depends(require_principal)):
     """List notes filtered by metadata (delegates to zk)."""
     profile = _cfg.load_profile()
     field_names = {f.name for f in profile.fields}
@@ -241,7 +555,8 @@ def list_notes(request: Request, tag: Optional[str] = None,
 
 
 @app.get("/api/notes/{filepath:path}/related", response_model=list[SearchResult])
-def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50)):
+def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
+                   principal: Principal = Depends(require_principal)):
     """Find semantically related notes."""
     from lib.db import search_chunks, get_chunk_embeddings
     import numpy as np
@@ -280,14 +595,14 @@ def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50)):
 
 
 @app.get("/api/notes/{filepath:path}/backlinks", response_model=list[BacklinkEntry])
-def get_backlinks(filepath: str):
+def get_backlinks(filepath: str, principal: Principal = Depends(require_principal)):
     """Find all notes that contain a [[wikilink]] to this note."""
     full = _resolve(filepath)
     return _find_backlinks(full)
 
 
 @app.get("/api/notes/{filepath:path}", response_model=NoteResponse)
-def read_note(filepath: str):
+def read_note(filepath: str, principal: Principal = Depends(require_principal)):
     """Read a note with parsed frontmatter and extracted wikilinks."""
     full = _resolve(filepath)
     raw = _read_file(full)
@@ -295,7 +610,7 @@ def read_note(filepath: str):
 
 
 @app.put("/api/notes/{filepath:path}", response_model=EditResponse)
-def write_note(filepath: str, req: WriteRequest):
+def write_note(filepath: str, req: WriteRequest, principal: Principal = Depends(require_principal)):
     """Full file write (replace entire content)."""
     full = _resolve(filepath)
     _write_file(full, req.content)
@@ -303,7 +618,7 @@ def write_note(filepath: str, req: WriteRequest):
 
 
 @app.patch("/api/notes/{filepath:path}", response_model=EditResponse)
-def edit_note(filepath: str, req: EditRequest):
+def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(require_principal)):
     """Surgical edit: modify a note without full-file replacement."""
     full = _resolve(filepath)
     text = _read_file(full)
@@ -363,7 +678,7 @@ def edit_note(filepath: str, req: EditRequest):
 
 
 @app.post("/api/notes", response_model=EditResponse)
-def create_note(req: CreateRequest):
+def create_note(req: CreateRequest, principal: Principal = Depends(require_principal)):
     """Create a new note from a template."""
     result = handle_brain_create(
         template=req.template,
@@ -377,7 +692,7 @@ def create_note(req: CreateRequest):
 
 
 @app.post("/api/notes/{filepath:path}/trash", response_model=EditResponse)
-def trash_note(filepath: str):
+def trash_note(filepath: str, principal: Principal = Depends(require_principal)):
     """Move a note to .trash/ and remove from the search index."""
     full = _resolve(filepath)
     if not os.path.isfile(full):
@@ -393,7 +708,7 @@ def trash_note(filepath: str):
 
 
 @app.post("/api/notes/{filepath:path}/restore", response_model=EditResponse)
-def restore_note(filepath: str):
+def restore_note(filepath: str, principal: Principal = Depends(require_principal)):
     """Restore a note from .trash/ back to its original location."""
     result = handle_brain_restore(
         trash_path=filepath,
@@ -405,7 +720,7 @@ def restore_note(filepath: str):
 
 
 @app.get("/api/templates", response_model=list[str])
-def list_templates():
+def list_templates(principal: Principal = Depends(require_principal)):
     """List available note templates."""
     return _list_template_names(brain_path=_cfg.brain_path)
 

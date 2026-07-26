@@ -36,6 +36,7 @@ The `brain-init` wizard will guide you through picking your model provider and e
 - [Brain Guide](docs/brain-guide.md): Philosophy and structure of your brain (folders, frontmatter, tags).
 - [MCP Server](docs/mcp-server.md): How to connect your brain to AI clients (Claude Code, Claude Desktop, Open WebUI, etc).
 - [Brain Skills](docs/skills.md): Detailed list of all AI skills available for managing your brain.
+- [Authentication](docs/auth.md): Gate the REST API and MCP HTTP transport behind static tokens or OAuth 2.1 (`profile.auth.mode`, default off).
 
 ### For Developers
 - [Development Guide](docs/development.md): How to build the image, run in development mode, and create new skills or tools.
@@ -64,9 +65,12 @@ character.
 - Profile-driven engine — a brain self-describes via `<brain>/.brain/`
 - Custom-profile distribution — clone/update a profile; bundled `ace` stays the zero-config default
 - Profile-driven queries — metadata filters adapt to each profile's fields
+- Auth gate (Seam 6) — static per-principal bearer tokens and an OAuth 2.1 authorization
+  server, shipped behind `profile.auth.mode = "oauth"` (default `none`, a total no-op). See
+  the [Authentication guide](docs/auth.md).
 
 **Planned:**
-- Authentication & access control as a profile dimension (`none` / OAuth / RBAC)
+- Content visibility / RBAC enforcement built on top of the auth gate (Seam 7)
 - Public, forkable profile repositories (community profiles)
 
 These land as **interim pull requests that merge without cutting a release** — the image on

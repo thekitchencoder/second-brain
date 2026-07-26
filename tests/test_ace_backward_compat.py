@@ -65,3 +65,10 @@ def test_plugin_identity_unchanged():
 
 def test_mcp_server_name_unchanged():
     assert load_profile(_ACE).plugin.mcp_server == "brain"
+
+
+def test_ace_profile_is_auth_none():
+    # Proves the gate is inert for the bundled ace profile: mode=none, no rbac.
+    prof = load_profile(_ACE)
+    assert prof.auth.mode == "none"
+    assert prof.auth.rbac is None
