@@ -10,19 +10,19 @@ Second-brain's engine (walk, semantic search, embeddings, wikilinks, edit/trash,
 templates) is already schema-agnostic. What is *not* is a thin set of hardcoded
 assumptions — the ACE folder names, the ACE-specific queryable fields
 (`intensity`/`effort`), the two skill-name sets, and the plugin identity. To use one
-engine for multiple brains (work/ACE, Fiction fiction, others) we introduce **one new
+engine for multiple brains (work/ACE, a private fiction brain, others) we introduce **one new
 concept — a selectable `BRAIN_PROFILE`** — and thread it through those few coupling
 points. Everything else stays shared.
 
 **Path 1 (public engine, private profiles):** the *mechanism* here goes upstream to the
 public repo (additive, non-breaking). Each brain's *profile* (folders, templates, skills,
 field set, auth/RBAC) is **data** — a directory that can be bundled (the default `ace`
-profile) or **mounted privately at deploy** (Fiction, work) onto the stock image. No
+profile) or **mounted privately at deploy** (fiction, work) onto the stock image. No
 fork.
 
 **Auth is a profile dimension, not a fixed feature** (Chris's point): the same engine runs
 `auth: none` (work — 1 machine/1 user), `auth: oauth` single-identity (home — many
-surfaces/1 user), or `auth: oauth` + **RBAC over virtual users** (Fiction — where RBAC
+surfaces/1 user), or `auth: oauth` + **RBAC over virtual users** (the fiction brain — where RBAC
 *is* the `known_by`/`never_tell` spoiler firewall). See Seams 6–7.
 
 ---
@@ -127,7 +127,7 @@ hardcoded `name="second-brain"`, `author="kitchencoder"`, and stages `_GLOBAL_SK
 `profile.skills` and `profile.plugin_*`. Skill *source* dir resolves under
 `profiles/<name>/skills/` (fall back to repo `skills/`+`brain-skills/` for `ace`). The
 plugin machinery is reused verbatim — only names are parametrised. **Effort: small.**
-(The Fiction skill *content* — re-authored prose for codex/canon/characters/memory —
+(The fiction-brain skill *content* — re-authored prose for codex/canon/characters/memory —
 lives in the private profile, not upstream. Mind the exfiltration-language guardrail: frame
 `known_by`/`never_tell` as in-world knowledge boundaries.)
 
@@ -155,7 +155,7 @@ created_*` + `tag`):**
 3. `_no_match_hint.field_map` → derived from `profile.fields`.
 4. MCP `brain_query.inputSchema` and REST `list_notes` → **generated from `profile.fields`**
    at server build (`list_tools()` already builds the schema dynamically-capable), plus the
-   stable `tag`/`created_*`/`where`. So Fiction's MCP advertises `layer`/`known_by`
+   stable `tag`/`created_*`/`where`. So the fiction brain's MCP advertises `layer`/`known_by`
    filters automatically; ACE keeps `intensity`/`effort`.
 
 **Effort: medium** — this is the one seam with real signature churn, but it's bounded to
@@ -185,13 +185,13 @@ header but nothing reads it. Both bind `0.0.0.0`. Greenfield.
 This is where `docs/mcp-oauth-brief.md`'s recommendation plugs in (drop Cloudflare Access
 on the MCP hostname; the server owns auth).
 
-## Seam 7 — Visibility / RBAC (Fiction spoiler firewall)
+## Seam 7 — Visibility / RBAC (fiction-brain spoiler firewall)
 
-This is where auth (who is calling) meets Fiction's `known_by`/`never_tell` (what may be
+This is where auth (who is calling) meets the fiction brain's `known_by`/`never_tell` (what may be
 surfaced). Two levels — ship v1, design v2:
 
 - **v1 (no engine change): enforce in skills.** `known_by`/`never_tell` are just
-  `visibility=true` list fields (indexed via Seam 5). The Fiction skill prose instructs
+  `visibility=true` list fields (indexed via Seam 5). The fiction-brain skill prose instructs
   the model never to surface `never_tell` facts to the named party. Zero core work; ships in
   the private profile.
 - **v2 (a small second seam): a visibility predicate in the retrieval path.** Given the
@@ -219,7 +219,7 @@ a clean upstream contribution.
 - **Upstream (public repo):** the seam mechanism — `Config.load_profile()`, profile-driven
   folders/templates/skills/fields, the generic `where` query, the `auth.mode` gate + OAuth
   metadata endpoints, the v2 visibility hook — and the bundled `ace` profile.
-- **Private (Fiction profile repo, mounted at deploy):** `profiles/fiction/` —
+- **Private (a private profile repo, mounted at deploy):** `profiles/fiction/` —
   its `profile.toml`, its templates (codex/canon/characters/memory frontmatter incl.
   `layer`/`known_by`/`never_tell`), its re-authored skills, its RBAC map. Never public.
 - Same pattern for the **work/Obsidian** profile (mounted onto the Obsidian host; remember to
@@ -233,7 +233,7 @@ a clean upstream contribution.
    MCP/REST schema. Ship.
 3. **Auth gate** (Seam 6). `auth.mode` + bearer enforcement + OAuth metadata; default off.
    Pairs with the OAuth dev session. Ship.
-4. **Visibility predicate** (Seam 7 v2). Optional, after Fiction is running on v1.
+4. **Visibility predicate** (Seam 7 v2). Optional, after the fiction brain is running on v1.
 
 ## Open decisions
 

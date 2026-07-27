@@ -82,7 +82,7 @@ automatically from `BRAIN_AUTH_UPSTREAM_ISSUER`'s OIDC metadata
 configure. The brain never stores passwords — it only ever validates an
 upstream `id_token` and mints its own JWT.
 
-## Static principals recipe (the Fiction-agent path)
+## Static principals recipe (the agent path)
 
 Use this when a caller is a program (an agent, a script, a service) rather than
 a human clicking through an OAuth consent screen — no browser flow required.

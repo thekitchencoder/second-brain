@@ -9,7 +9,8 @@ and optionally creates the profile's folder structure and generates a
 Idempotent — safe to run multiple times.
 
 Usage:
-    brain-init [--auto] [path]
+    brain-init [--auto] [--profile-repo <url-or-path>] [--brain-name <name>]
+               [--mcp-url <url>] [--mcp-port <port>] [--api-port <port>] [path]
 
     --auto   Non-interactive mode: apply defaults, skip optional steps.
              Used by the container entrypoint on first start.
@@ -17,11 +18,14 @@ Usage:
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
-import urllib.request
 import urllib.error
+import urllib.parse
+import urllib.request
+from collections import namedtuple
 
 # ---------------------------------------------------------------------------
 # Source path resolution
@@ -36,13 +40,22 @@ _VSCODE_SOURCE_CANDIDATES = [
 ]
 
 sys.path.insert(0, _SCRIPT_DIR)
-from lib.profile import load_profile, validate_profile, check_collisions, ProfileError  # noqa: E402
+from lib.profile import load_profile, validate_profile, check_collisions, ProfileError, qualified_plugin  # noqa: E402
 
 DEFAULT_PROFILE_REPO = "https://github.com/thekitchencoder/brain-profile-ace"
 
 _PROFILE = None
 _PROFILE_DIR = None
-_PROFILE_REPO = None  # set from --profile-repo in __main__
+_PROFILE_REPO = None      # set from --profile-repo in __main__
+_BRAIN_NAME_FLAG = None   # set from --brain-name in __main__
+_MCP_URL_FLAG = None      # set from --mcp-url in __main__
+_MCP_PORT_FLAG = None     # set from --mcp-port in __main__
+_API_PORT_FLAG = None     # set from --api-port in __main__
+_IDENTITY = None          # Identity, set by run_auto / run_wizard
+
+_BRAIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+Identity = namedtuple("Identity", "name mcp_url mcp_port api_port")
 
 
 def _profile_source():
@@ -356,6 +369,91 @@ def _read_env_value(env_path, key):
     return ""
 
 
+def _validate_identity(name, mcp_url, mcp_port_s, api_port_s):
+    """Exit 1 with a clear message on any invalid identity input.
+
+    Returns (mcp_port, api_port) as ints with defaults applied.
+    """
+    if name and not _BRAIN_NAME_RE.match(name):
+        print(f"Error: invalid brain name {name!r} — use 1-32 chars of "
+              "lowercase letters, digits, and hyphens (no leading hyphen)",
+              file=sys.stderr)
+        sys.exit(1)
+    if mcp_url:
+        parsed = urllib.parse.urlparse(mcp_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            print(f"Error: invalid MCP URL {mcp_url!r} — must be an http(s) URL",
+                  file=sys.stderr)
+            sys.exit(1)
+    ports = {}
+    for label, raw, default in (("MCP", mcp_port_s, 7780), ("API", api_port_s, 7779)):
+        if not raw:
+            ports[label] = default
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            value = -1
+        if not 1 <= value <= 65535:
+            print(f"Error: invalid {label} port {raw!r} — must be an integer 1-65535",
+                  file=sys.stderr)
+            sys.exit(1)
+        ports[label] = value
+    return ports["MCP"], ports["API"]
+
+
+def resolve_identity(brain_path):
+    """Resolve brain identity: CLI flag > environment > existing .env > default."""
+    env_path = os.path.join(brain_path, ".env")
+
+    def pick(flag_val, key):
+        return flag_val or os.environ.get(key) or _read_env_value(env_path, key)
+
+    name = pick(_BRAIN_NAME_FLAG, "BRAIN_NAME")
+    mcp_url = pick(_MCP_URL_FLAG, "BRAIN_MCP_PUBLIC_URL")
+    mcp_port_s = pick(_MCP_PORT_FLAG, "BRAIN_MCP_HOST_PORT")
+    api_port_s = pick(_API_PORT_FLAG, "BRAIN_API_HOST_PORT")
+    mcp_port, api_port = _validate_identity(name, mcp_url, mcp_port_s, api_port_s)
+    return Identity(name=name or "", mcp_url=mcp_url or "",
+                    mcp_port=mcp_port, api_port=api_port)
+
+
+def _upsert_env_value(env_path, key, value):
+    """Append-or-replace one KEY=value line in a .env file (also replaces a
+    commented '# KEY=' placeholder in place)."""
+    lines = []
+    if os.path.isfile(env_path):
+        with open(env_path) as f:
+            lines = f.read().splitlines()
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+            lines[idx] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    with open(env_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def _persist_identity(brain_path, identity):
+    """Record non-default identity values in an existing .env so a later
+    flag-less run (the container re-runs brain-init on every start) restages
+    the same identity. No .env -> no-op: `docker run -e` re-supplies values
+    each start, so there is nothing durable to update."""
+    env_path = os.path.join(brain_path, ".env")
+    if not os.path.isfile(env_path):
+        return
+    for key, value, default in (
+        ("BRAIN_NAME", identity.name, ""),
+        ("BRAIN_MCP_PUBLIC_URL", identity.mcp_url, ""),
+        ("BRAIN_MCP_HOST_PORT", str(identity.mcp_port), "7780"),
+        ("BRAIN_API_HOST_PORT", str(identity.api_port), "7779"),
+    ):
+        if value and value != default and _read_env_value(env_path, key) != value:
+            _upsert_env_value(env_path, key, value)
+
+
 def _count_md_files(path):
     """Count markdown files in the vault (non-recursive in hidden dirs)."""
     count = 0
@@ -450,10 +548,11 @@ def stage_brain_plugin(brain_path):
 
     Install with:
         claude plugin marketplace add <vault>/.ai
-        claude plugin install second-brain
+        claude plugin install <plugin-name>
     """
     skills_source = os.path.join(_PROFILE_DIR, "skills", "global")
-    plugin = _PROFILE.plugin
+    ident = _IDENTITY or Identity("", "", 7780, 7779)
+    plugin = qualified_plugin(_PROFILE.plugin, ident.name)
 
     ai_dir = os.path.join(brain_path, ".ai")
     plugin_dir = os.path.join(ai_dir, "brain-plugin")
@@ -463,6 +562,18 @@ def stage_brain_plugin(brain_path):
     os.makedirs(manifest_dir, exist_ok=True)
     os.makedirs(skills_dir, exist_ok=True)
 
+    # A rename is detectable: the previously staged manifest holds the old
+    # plugin name. Read it before overwriting so we can guide the host-side
+    # cleanup instead of leaving a stale plugin installed.
+    manifest_path = os.path.join(manifest_dir, "plugin.json")
+    previous_name = ""
+    if os.path.isfile(manifest_path):
+        try:
+            with open(manifest_path) as f:
+                previous_name = json.load(f).get("name", "")
+        except (json.JSONDecodeError, OSError):
+            previous_name = ""
+
     # Write plugin manifest
     manifest = {
         "name": plugin.name,
@@ -470,7 +581,6 @@ def stage_brain_plugin(brain_path):
         "description": f"Global brain skills and MCP server for {plugin.name}",
         "author": {"name": plugin.author},
     }
-    manifest_path = os.path.join(manifest_dir, "plugin.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
@@ -496,12 +606,15 @@ def stage_brain_plugin(brain_path):
         json.dump(marketplace, f, indent=2)
         f.write("\n")
 
-    # Write MCP server config (HTTP transport)
+    # Write MCP server config (HTTP transport). The URL is what HOST Claude
+    # Code sessions will dial: the public URL verbatim when set (tunnel /
+    # reverse proxy), else localhost at the published host port.
+    mcp_url = ident.mcp_url or f"http://127.0.0.1:{ident.mcp_port}/mcp/"
     mcp_config = {
         "mcpServers": {
             plugin.mcp_server: {
                 "type": "http",
-                "url": "http://127.0.0.1:7780/mcp/",
+                "url": mcp_url,
             }
         }
     }
@@ -542,8 +655,22 @@ def stage_brain_plugin(brain_path):
             if os.path.isfile(fpath) and (name.endswith(".sh") or name.endswith(".cmd")):
                 os.chmod(fpath, 0o755)
 
+    # Hand the effective marker to the profile's hooks: session-start.sh
+    # reads hooks/marker when present and falls back to its built-in default.
+    hooks_dst = os.path.join(plugin_dir, "hooks")
+    os.makedirs(hooks_dst, exist_ok=True)
+    with open(os.path.join(hooks_dst, "marker"), "w") as f:
+        f.write(plugin.marker + "\n")
+
     if staged:
         print(f"  Staged brain plugin to .ai/brain-plugin/ ({len(staged)} skills + MCP config + hooks)")
+
+    if previous_name and previous_name != plugin.name:
+        print(f"  NOTE: plugin identity changed — previously staged as '{previous_name}'.")
+        print(f"  On the host, remove the old install before adding the new one:")
+        print(f"    claude plugin uninstall {previous_name}")
+        print(f"    claude plugin marketplace remove {previous_name}")
+        print(f"  then re-add this vault's marketplace and install '{plugin.name}'.")
 
 
 def init_profile_folders(brain_path, profile):
@@ -589,6 +716,28 @@ def generate_env(brain_path, config):
         lines.append(f"BRAIN_HOST_PATH={config['host_path']}")
     else:
         lines.append("# BRAIN_HOST_PATH=~/Documents/brain")
+    lines.append("")
+    lines.append("# ── Identity ──────────────────────────────────────────────────────────────────")
+    lines.append("# Brain name qualifies the staged plugin identity so a second brain can")
+    lines.append("# coexist on this machine (plugin/marketplace name, MCP server key, marker).")
+    if config.get("brain_name"):
+        lines.append(f"BRAIN_NAME={config['brain_name']}")
+    else:
+        lines.append("# BRAIN_NAME=")
+    lines.append("# Full public URL of the MCP endpoint (tunnel / reverse-proxy deployments)")
+    if config.get("mcp_public_url"):
+        lines.append(f"BRAIN_MCP_PUBLIC_URL={config['mcp_public_url']}")
+    else:
+        lines.append("# BRAIN_MCP_PUBLIC_URL=")
+    lines.append("# Host ports published by docker run (-p <api>:7779 -p <mcp>:7780)")
+    if str(config.get("mcp_host_port") or "") not in ("", "7780"):
+        lines.append(f"BRAIN_MCP_HOST_PORT={config['mcp_host_port']}")
+    else:
+        lines.append("# BRAIN_MCP_HOST_PORT=7780")
+    if str(config.get("api_host_port") or "") not in ("", "7779"):
+        lines.append(f"BRAIN_API_HOST_PORT={config['api_host_port']}")
+    else:
+        lines.append("# BRAIN_API_HOST_PORT=7779")
     lines.append("")
     lines.append("# ── MCP transport ─────────────────────────────────────────────────────────────")
     lines.append("# Enable HTTP MCP transport on port 7780")
@@ -674,7 +823,7 @@ PRESETS = {
 
 def run_wizard(brain_path):
     """Interactive setup wizard — guides user through configuration."""
-    global _PROFILE, _PROFILE_DIR
+    global _PROFILE, _PROFILE_DIR, _IDENTITY
     _PROFILE, _PROFILE_DIR = resolve_profile(brain_path)
     md_count = _count_md_files(brain_path)
     is_fresh = md_count == 0 and not os.path.isdir(os.path.join(brain_path, ".zk"))
@@ -696,7 +845,6 @@ def run_wizard(brain_path):
     init_core(brain_path)
     ensure_brain_gitignore(brain_path)
     init_vault_skills(brain_path)
-    stage_brain_plugin(brain_path)
     print()
 
     # Step 2: Profile folders
@@ -725,7 +873,8 @@ def run_wizard(brain_path):
     if os.path.isfile(env_path):
         print(f"  .env already exists. ", end="")
         if _ask("Regenerate?", default="n"):
-            config = _prompt_env_config_wizard(default_host_path=existing_host_path)
+            config = _prompt_env_config_wizard(default_host_path=existing_host_path,
+                                               env_path=env_path)
             generate_env(brain_path, config)
             host_path = config.get("host_path", "")
         else:
@@ -735,6 +884,13 @@ def run_wizard(brain_path):
         config = _prompt_env_config_wizard()
         generate_env(brain_path, config)
         host_path = config.get("host_path", "")
+    print()
+
+    # Identity may have just been written to .env — resolve, persist any
+    # flag-supplied values, and stage the plugin under the final identity.
+    _IDENTITY = resolve_identity(brain_path)
+    _persist_identity(brain_path, _IDENTITY)
+    stage_brain_plugin(brain_path)
     print()
 
     # Step 4: Index
@@ -763,7 +919,7 @@ def _ask_host_path(default=""):
     return _ask_input("  Host path to this vault (e.g. ~/Documents/brain)", default=default)
 
 
-def _prompt_env_config_wizard(default_host_path=""):
+def _prompt_env_config_wizard(default_host_path="", env_path=""):
     """Preset picker + model discovery — used for both new and regenerated .env."""
     print("  The container needs to know which models to use for embeddings and chat.")
     print()
@@ -805,7 +961,45 @@ def _prompt_env_config_wizard(default_host_path=""):
         for key in ("anthropic_base_url", "anthropic_auth_token", "anthropic_model", "brave_api_key"):
             config[key] = ""
     config["host_path"] = _ask_host_path(default_host_path)
+    _prompt_identity(config, env_path=env_path)
     return config
+
+
+def _prompt_identity(config, env_path=""):
+    """Optional brain identity — lets a second brain coexist on one machine.
+    Defaults mirror resolve_identity's precedence (flag > env > existing .env)
+    so regenerating .env can't silently drop a brain's name. Invalid names
+    re-prompt; ports/URL are validated by resolve_identity after the .env is
+    written (fail-loud on typos)."""
+
+    def _default(flag_val, key):
+        return flag_val or os.environ.get(key) or _read_env_value(env_path, key) or ""
+
+    print()
+    print("  ── Brain identity (optional) ──")
+    print("  A brain name qualifies the host plugin identity (plugin name, MCP")
+    print("  server key, hook marker) so several brains can coexist on one")
+    print("  machine. Leave blank for the default single-brain identity.")
+    name = _ask_input("  Brain name (blank for none)",
+                      default=_default(_BRAIN_NAME_FLAG, "BRAIN_NAME"))
+    while name and not _BRAIN_NAME_RE.match(name):
+        print("  Invalid: 1-32 chars of lowercase letters, digits, hyphens (no leading hyphen).")
+        name = _ask_input("  Brain name (blank for none)", default="")
+    config["brain_name"] = name
+    if name:
+        print()
+        print("  NOTE: two containers cannot publish the same host ports — Docker")
+        print("  refuses a duplicate -p binding. If another brain already uses the")
+        print("  defaults (7779/7780), pick free ports here.")
+        config["api_host_port"] = _ask_input(
+            "  Host port for the REST API (docker -p <port>:7779)",
+            default=_default(_API_PORT_FLAG, "BRAIN_API_HOST_PORT") or "7779")
+        config["mcp_host_port"] = _ask_input(
+            "  Host port for MCP HTTP (docker -p <port>:7780)",
+            default=_default(_MCP_PORT_FLAG, "BRAIN_MCP_HOST_PORT") or "7780")
+    config["mcp_public_url"] = _ask_input(
+        "  Public MCP URL for tunnel/reverse-proxy deployments (blank for local)",
+        default=_default(_MCP_URL_FLAG, "BRAIN_MCP_PUBLIC_URL"))
 
 
 def _prompt_env_config():
@@ -847,21 +1041,29 @@ def _print_welcome(brain_path, host_path=""):
     """Print next steps and host skill install instructions."""
     # Use host_path for commands shown to the user; fall back to brain_path if unknown
     display_path = host_path or brain_path
+    ident = _IDENTITY or Identity("", "", 7780, 7779)
+    container = f"second-brain-{ident.name}" if ident.name else "second-brain"
+    plugin_name = qualified_plugin(_PROFILE.plugin, ident.name).name if _PROFILE else container
+    mcp_url = ident.mcp_url or f"http://127.0.0.1:{ident.mcp_port}/mcp/"
 
     print()
     print("-" * 60)
     print()
     print("  ── Start the container ──")
     print()
-    print(f"    docker run -d --name second-brain --restart unless-stopped \\")
+    print(f"    docker run -d --name {container} --restart unless-stopped \\")
     print(f"      -v {display_path}:/brain \\")
-    print(f"      -p 7778:7778 -p 7780:7780 \\")
+    print(f"      -v {container}-claude:/home/coder/.claude \\")
+    print(f"      -v {container}-zsh:/home/coder/.zsh-data \\")
+    print(f"      -p {ident.api_port}:7779 -p {ident.mcp_port}:7780 \\")
     print(f"      kitchencoder/second-brain:latest")
     print()
     print("  Once running:")
-    print()
-    print("  Open http://localhost:7778 for VS Code in the browser.")
-    print("  Run 'claude' in the terminal to start a Claude Code session.")
+    print(f"    REST API:   http://localhost:{ident.api_port}")
+    print(f"    MCP (HTTP): {mcp_url}")
+    if ident.mcp_url:
+        print("    (public URL — route it to the container's port 7780 via your")
+        print("     tunnel or reverse proxy; -p is only needed for local access)")
     print()
     print("  Try these to get started:")
     print('    "Set up my brain"         — guided first-time vault setup')
@@ -885,7 +1087,7 @@ def _print_welcome(brain_path, host_path=""):
             print("  To install on your host machine, run these two commands:")
             print()
             print(f"    claude plugin marketplace add {display_path}/.ai")
-            print(f"    claude plugin install second-brain")
+            print(f"    claude plugin install {plugin_name}")
             print()
             print("  This registers the brain MCP server and installs all global")
             print("  skills so Claude Code can access your brain from any project.")
@@ -901,8 +1103,10 @@ def _print_welcome(brain_path, host_path=""):
 
 def run_auto(brain_path):
     """Non-interactive init: profile resolve + core setup + vault skills + stage global skills."""
-    global _PROFILE, _PROFILE_DIR
+    global _PROFILE, _PROFILE_DIR, _IDENTITY
+    _IDENTITY = resolve_identity(brain_path)
     _PROFILE, _PROFILE_DIR = resolve_profile(brain_path)
+    _persist_identity(brain_path, _IDENTITY)
     print("brain-init: auto-initialising vault...")
     init_core(brain_path)
     ensure_brain_gitignore(brain_path)
@@ -920,15 +1124,22 @@ if __name__ == "__main__":
     argv = sys.argv[1:]
     auto = "--auto" in argv
     positionals = []
+    _value_flags = {
+        "--profile-repo": "_PROFILE_REPO",
+        "--brain-name": "_BRAIN_NAME_FLAG",
+        "--mcp-url": "_MCP_URL_FLAG",
+        "--mcp-port": "_MCP_PORT_FLAG",
+        "--api-port": "_API_PORT_FLAG",
+    }
     i = 0
     while i < len(argv):
         tok = argv[i]
-        if tok == "--profile-repo":
+        if tok in _value_flags:
             val = argv[i + 1] if i + 1 < len(argv) else None
             if val is None or val.startswith("-"):
-                print("Error: --profile-repo requires a value", file=sys.stderr)
+                print(f"Error: {tok} requires a value", file=sys.stderr)
                 sys.exit(1)
-            _PROFILE_REPO = val
+            globals()[_value_flags[tok]] = val
             i += 2
             continue
         if not tok.startswith("-"):

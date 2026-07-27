@@ -23,6 +23,14 @@ reaches its end state. See the [Roadmap](README.md#roadmap).
   newer schema than it supports instead of misreading it.
 
 ### Added
+- Per-brain host identity: `brain-init --brain-name <name>` (or `-e BRAIN_NAME`)
+  qualifies the staged plugin, marketplace, MCP server key, and session-hook
+  marker (`second-brain-work`, `brain-work`) so several brains coexist on one
+  machine. The staged MCP endpoint is configurable — `--mcp-url` /
+  `BRAIN_MCP_PUBLIC_URL` for tunnel/reverse-proxy deployments (staged
+  verbatim), `--mcp-port` / `BRAIN_MCP_HOST_PORT` and `BRAIN_API_HOST_PORT`
+  for remapped local ports. Identity persists in the brain's `.env`; with
+  nothing set, staging is unchanged.
 - `PgVectorStore`: PostgreSQL/pgvector index backend for the full-stack tier,
   selected via `BRAIN_VECTOR_STORE=pgvector` + `BRAIN_DATABASE_URL`. Exact-scan
   search with native layer filtering (recall-correct by construction).

@@ -1,6 +1,6 @@
 import textwrap
 import pytest
-from lib.profile import load_profile, validate_profile, Profile, Field, Plugin, Auth, ProfileError, compose_zk_config, emit_toml, check_collisions
+from lib.profile import load_profile, validate_profile, Profile, Field, Plugin, Auth, ProfileError, compose_zk_config, emit_toml, check_collisions, qualified_plugin
 
 
 def _write_profile(dir_path, toml_text):
@@ -250,3 +250,18 @@ def test_check_collisions_mcp_server():
                   plugin=Plugin("other-plugin", "a", "other", "brain"), zk={}, auth=Auth("none"), origin=None)
     errors = check_collisions(a, [dup])
     assert any("mcp server 'brain'" in e.lower() for e in errors)
+
+
+def test_qualified_plugin_unset_name_is_identity():
+    p = Plugin(name="second-brain", author="kitchencoder", marker="brain", mcp_server="brain")
+    assert qualified_plugin(p, "") is p
+    assert qualified_plugin(p, None) is p
+
+
+def test_qualified_plugin_qualifies_all_three_names():
+    p = Plugin(name="second-brain", author="kitchencoder", marker="brain", mcp_server="brain")
+    q = qualified_plugin(p, "work")
+    assert q.name == "second-brain-work"
+    assert q.marker == "brain-work"
+    assert q.mcp_server == "brain-work"
+    assert q.author == "kitchencoder"

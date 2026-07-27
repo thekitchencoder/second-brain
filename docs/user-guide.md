@@ -247,3 +247,49 @@ brain-profile update   # git pull --ff-only the profile clone
 ```
 
 Cloned profiles (including the default) fast-forward to their repo's latest with `brain-profile update`. A profile copied from a plain local directory isn't a git clone — re-seed it by re-running `brain-init` against a fresh vault, or manage the source dir yourself.
+
+## Running two brains on one machine
+
+Every brain's host identity (plugin name, MCP server key, hook marker) defaults
+to the profile's shared values, and two containers cannot publish the same host
+ports — Docker refuses a duplicate `-p` binding. Give the second (and any
+further) brain a **name** at init:
+
+```bash
+docker run --rm -it -v ~/Documents/work-brain:/brain \
+  -e BRAIN_NAME=work -e BRAIN_MCP_HOST_PORT=7782 -e BRAIN_API_HOST_PORT=7781 \
+  kitchencoder/second-brain:latest brain-init
+# or on the host: brain-init --brain-name work --mcp-port 7782 --api-port 7781 ~/Documents/work-brain
+```
+
+The name qualifies everything the host sees — plugin `second-brain-work`, MCP
+server key `brain-work`, hook marker `brain-work` — and persists in the brain's
+`.env`, so container restarts restage the same identity with no flags. Start
+the second container with its remapped ports and distinct container/volume
+names (the init welcome text prints the exact command), then install its
+plugin alongside the first:
+
+```bash
+claude plugin marketplace add ~/Documents/work-brain/.ai
+claude plugin install second-brain-work
+```
+
+Renaming a brain later (`brain-init --brain-name <new>` against the same
+vault) restages under the new identity and prints the exact host-side
+cleanup commands: uninstall the old plugin, remove its marketplace entry,
+then install the new name.
+
+### Remote brain (tunnel / reverse proxy)
+
+To reach a brain at a public URL instead of a local port, set the full MCP
+endpoint at init — it is staged verbatim into the plugin's MCP config:
+
+```bash
+brain-init --brain-name work \
+  --mcp-url https://work-brain.example.com/mcp/ ~/vaults/work-brain
+```
+
+Routing that URL to the container's port 7780 is your tunnel or reverse
+proxy's job — no `-p` mapping is needed at all when the tunnel client reaches
+the container over a Docker network. When the oauth tier is enabled, keep the
+URL consistent with `BRAIN_AUTH_AUDIENCE` (see [auth.md](auth.md)).

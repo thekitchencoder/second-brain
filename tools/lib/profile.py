@@ -42,6 +42,21 @@ class Plugin:
     mcp_server: str = ""
 
 
+def qualified_plugin(plugin: Plugin, brain_name) -> Plugin:
+    """Qualify the host-facing identity with a brain name so several brains
+    can coexist on one machine. Falsy name -> unchanged (single-brain default).
+    The three names always move together; qualifying only one still collides.
+    """
+    if not brain_name:
+        return plugin
+    return Plugin(
+        name=f"{plugin.name}-{brain_name}",
+        author=plugin.author,
+        marker=f"{plugin.marker}-{brain_name}",
+        mcp_server=f"{plugin.mcp_server}-{brain_name}",
+    )
+
+
 @dataclass(frozen=True)
 class Rbac:
     default_role: str | None

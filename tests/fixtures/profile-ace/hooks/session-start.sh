@@ -8,7 +8,13 @@
 
 set -euo pipefail
 
+# The engine stages the effective marker (possibly brain-name-qualified) at
+# hooks/marker; fall back to the unqualified default when absent.
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARKER="brain"
+if [ -f "$HOOK_DIR/marker" ]; then
+    MARKER="$(cat "$HOOK_DIR/marker")"
+fi
 
 # --- Find the brain block in the nearest CLAUDE.md ---
 
@@ -29,8 +35,10 @@ while [ "$dir" != "/" ]; do
             # Extract the brain block (between <!-- $MARKER --> and <!-- /$MARKER -->)
             block=$(sed -n "/^<!-- ${MARKER} -->/,/^<!-- \/${MARKER} -->/p" "$candidate" 2>/dev/null || true)
             if [ -n "$block" ]; then
-                effort=$(echo "$block" | grep '^effort:' | head -1 | sed 's/^effort:[[:space:]]*//')
-                summary=$(echo "$block" | grep '^summary:' | head -1 | sed 's/^summary:[[:space:]]*//')
+                # || true: a block missing either line must not kill the hook
+                # under pipefail — SessionStart must stay silent, not fail.
+                effort=$(echo "$block" | { grep '^effort:' || true; } | head -1 | sed 's/^effort:[[:space:]]*//')
+                summary=$(echo "$block" | { grep '^summary:' || true; } | head -1 | sed 's/^summary:[[:space:]]*//')
                 claude_md_path="$candidate"
                 break 2
             fi
