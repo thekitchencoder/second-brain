@@ -84,6 +84,27 @@ def test_load_profile_missing_required_key_raises(tmp_path):
         load_profile(d)
 
 
+def test_schema_missing_defaults_to_one(tmp_path):
+    # ACE_TOML has no schema key — pre-schema profiles keep loading.
+    p = load_profile(_write_profile(tmp_path, ACE_TOML))
+    assert p.name == "ace"
+
+
+def test_schema_current_is_accepted(tmp_path):
+    p = load_profile(_write_profile(tmp_path, "schema = 1\n" + ACE_TOML))
+    assert p.name == "ace"
+
+
+def test_schema_newer_than_engine_fails_loud(tmp_path):
+    with pytest.raises(ProfileError, match="schema 2.*update the second-brain image"):
+        load_profile(_write_profile(tmp_path, "schema = 2\n" + ACE_TOML))
+
+
+def test_schema_non_integer_raises(tmp_path):
+    with pytest.raises(ProfileError, match="schema must be an integer"):
+        load_profile(_write_profile(tmp_path, 'schema = "1"\n' + ACE_TOML))
+
+
 def _build_profile_tree(tmp_path, toml_text, templates=(), global_skills=(), vault_skills=()):
     _write_profile(tmp_path, toml_text)
     for t in templates:

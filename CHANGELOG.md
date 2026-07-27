@@ -10,6 +10,18 @@ reaches its end state. See the [Roadmap](README.md#roadmap).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING:** profiles no longer ship inside the image. The default profile
+  is cloned from [brain-profile-ace](https://github.com/thekitchencoder/brain-profile-ace)
+  on first init — which therefore needs network access or a local
+  `BRAIN_PROFILE_REPO` source (git URL or directory). Existing brains
+  (`.brain/` already seeded) are unaffected. An Obsidian flavour is available
+  at [brain-profile-obsidian](https://github.com/thekitchencoder/brain-profile-obsidian).
+  `folders = []` is now valid in `profile.toml` (no prescribed taxonomy), and
+  `profile.toml` may declare a `schema` version (missing = 1): now that profiles
+  evolve in their own repos, an engine refuses to load a profile declaring a
+  newer schema than it supports instead of misreading it.
+
 ### Added
 - `PgVectorStore`: PostgreSQL/pgvector index backend for the full-stack tier,
   selected via `BRAIN_VECTOR_STORE=pgvector` + `BRAIN_DATABASE_URL`. Exact-scan
@@ -93,10 +105,11 @@ a `PolicyProvider` that generalizes beyond the bundled sqlite-vec store).
 
 ### Backward compatibility
 
-The default experience is unchanged. `docker run … brain-init` followed by
-`docker run …` behaves exactly as before — offline, zero-config — because the bundled
-`ace` profile encodes today's folders, templates, skills, and conventions. Custom
-profiles are strictly opt-in.
+`docker run … brain-init` followed by `docker run …` still yields the same
+brain as before — the `ace` profile encodes the same folders, templates,
+skills, and conventions — but first init now clones that profile from its
+public repo, so it needs network access once (or a local `BRAIN_PROFILE_REPO`
+source). Existing brains are untouched. Custom profiles remain strictly opt-in.
 
 ## [1.1.0]
 

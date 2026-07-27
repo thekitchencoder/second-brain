@@ -18,7 +18,7 @@ def _resolve(name):
 _BRAIN_INIT = _resolve("brain-init")
 _BRAIN_PROFILE = _resolve("brain-profile")
 
-from tests.test_brain_init_profile import _make_local_profile_repo  # noqa: E402
+from tests.test_brain_init_profile import _make_local_profile_repo, _FIXTURE_ACE  # noqa: E402
 
 
 def _auto(brain, *extra, env_extra=None):
@@ -27,10 +27,12 @@ def _auto(brain, *extra, env_extra=None):
                           capture_output=True, text=True, env=env)
 
 
-def test_default_is_offline_bundled_ace(tmp_path):
+def test_default_is_offline_fixture_seeded_ace(tmp_path):
     brain = tmp_path / "b"; brain.mkdir()
-    # No network is used by the bundled path; assert the ace identity + a folder.
-    assert _auto(brain).returncode == 0
+    # Seed from the frozen fixture so this stays offline; assert the ace
+    # identity + a folder. (The true network default — no source at all —
+    # is covered by test_brain_init_profile.py's dedicated dead-proxy tests.)
+    assert _auto(brain, env_extra={"BRAIN_PROFILE_REPO": _FIXTURE_ACE}).returncode == 0
     assert tomllib.loads((brain / ".brain" / "profile.toml").read_text())["name"] == "ace"
     assert (brain / "Atlas").is_dir()
 

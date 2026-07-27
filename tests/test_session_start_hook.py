@@ -2,7 +2,7 @@ import json
 import os
 import subprocess
 
-_HOOK = os.path.join(os.path.dirname(__file__), "..", "profiles", "ace", "hooks",
+_HOOK = os.path.join(os.path.dirname(__file__), "fixtures", "profile-ace", "hooks",
                      "session-start.sh")
 
 

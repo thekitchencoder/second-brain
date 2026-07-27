@@ -5,7 +5,7 @@ This guide is for developers who want to modify the second-brain, add new skills
 ## Project Structure
 
 - `tools/lib/`: Python library for brain tools (indexing, search, MCP logic).
-- `profiles/ace/`: The bundled default profile — its `skills/global/` (MCP-only) and `skills/vault/` (filesystem-access) skills, `templates/`, hooks, and `profile.toml`. Skills and templates are sourced from the active profile, not top-level dirs.
+- Profiles: no longer in this repo — the default lives at [brain-profile-ace](https://github.com/thekitchencoder/brain-profile-ace) (and flavours like [brain-profile-obsidian](https://github.com/thekitchencoder/brain-profile-obsidian)). For profile work, clone one as a sibling checkout and set `PROFILE_HOST_PATH=/path/to/brain-profile-ace` in `.env.local`: `task up` then seeds fresh brains from it (`BRAIN_PROFILE_REPO=/profile-src`) and `task sync-skills` copies its skills live into the container.
 - `claude/seed/`: The container's own Claude Code config seed.
 - `scripts/`: Initialization and helper scripts.
 
@@ -19,7 +19,7 @@ task build
 ```
 
 ### 2. Start the dev container
-The dev container bind-mounts the local `tools/lib` and `profiles/ace/templates` folders into the container, allowing for live-reloading of logic and template changes.
+The dev container bind-mounts the local `tools/lib` folder (and, when `PROFILE_HOST_PATH` is set, mounts that profile checkout at `/profile-src`), allowing for live-reloading of logic changes.
 ```bash
 task up
 ```

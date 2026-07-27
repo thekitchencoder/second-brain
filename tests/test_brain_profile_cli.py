@@ -44,10 +44,23 @@ def test_update_pulls_a_cloned_profile(tmp_path):
     assert (brain / ".brain" / "templates" / "new.md").is_file()
 
 
-def test_update_on_bundled_profile_is_graceful(tmp_path):
+def test_update_on_plain_dir_profile_is_graceful(tmp_path):
+    # A profile seeded from a plain (non-git) local directory is copied, not
+    # cloned; `brain-profile update` must say so, not attempt a git pull.
+    # (Previously this exercised the no-BRAIN_PROFILE_REPO default, which
+    # used to fall back to a bundled copy; the default is now always a
+    # remote clone, so the plain-copy path is exercised explicitly here.)
+    src = tmp_path / "plain-profile"
+    (src / "templates").mkdir(parents=True)
+    (src / "templates" / "default.md").write_text("# d\n")
+    (src / "profile.toml").write_text(
+        'name = "plain"\nfolders = ["Z"]\n[plugin]\nname="p"\nauthor="a"\nmarker="p"\n'
+        '[skills]\nglobal=[]\nvault=[]\n[zk]\ndefault_template="default.md"\n[auth]\nmode="none"\n')
     brain = tmp_path / "brain2"; brain.mkdir()
     subprocess.run([sys.executable, _BRAIN_INIT, "--auto", str(brain)],
-                   capture_output=True, text=True, env=dict(os.environ, BRAIN_PATH=str(brain)), check=True)
+                   capture_output=True, text=True,
+                   env=dict(os.environ, BRAIN_PATH=str(brain), BRAIN_PROFILE_REPO=str(src)),
+                   check=True)
     r = subprocess.run([sys.executable, _BRAIN_PROFILE, "update", str(brain)],
                        capture_output=True, text=True, env=dict(os.environ, BRAIN_PATH=str(brain)))
     assert r.returncode == 0, r.stderr

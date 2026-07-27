@@ -38,10 +38,7 @@ _VSCODE_SOURCE_CANDIDATES = [
 sys.path.insert(0, _SCRIPT_DIR)
 from lib.profile import load_profile, validate_profile, check_collisions, ProfileError  # noqa: E402
 
-_PROFILE_SOURCE_CANDIDATES = [
-    "/usr/local/lib/brain-tools/profiles/ace",       # inside container
-    os.path.join(_REPO_ROOT, "profiles", "ace"),     # local dev
-]
+DEFAULT_PROFILE_REPO = "https://github.com/thekitchencoder/brain-profile-ace"
 
 _PROFILE = None
 _PROFILE_DIR = None
@@ -99,26 +96,23 @@ def resolve_profile(brain_path):
 
     Source precedence when .brain/ is absent:
       1. a custom source (--profile-repo / BRAIN_PROFILE_REPO): clone or copy
-      2. the bundled ace profile: copy (offline default)
+      2. DEFAULT_PROFILE_REPO: a remote git clone (first init needs network,
+         or a custom local source)
     """
     profile_dir = os.path.join(brain_path, ".brain")
     freshly_seeded = False
     if not os.path.isfile(os.path.join(profile_dir, "profile.toml")):
-        source = _profile_source()
-        if source:
-            try:
-                _seed_profile_dir(source, profile_dir)
-            except RuntimeError as e:
-                print(f"Error: {e}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            bundled = _find_source(_PROFILE_SOURCE_CANDIDATES)
-            if bundled is None:
-                print("Error: no profile at <brain>/.brain and no bundled ace profile found.",
+        source = _profile_source() or DEFAULT_PROFILE_REPO
+        try:
+            _seed_profile_dir(source, profile_dir)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            if source == DEFAULT_PROFILE_REPO:
+                print(f"Could not clone the default profile from {DEFAULT_PROFILE_REPO}. "
+                      "Check network access, or set BRAIN_PROFILE_REPO to a git URL or "
+                      "local directory (e.g. a cloned profile repo) and re-run brain-init.",
                       file=sys.stderr)
-                sys.exit(1)
-            shutil.copytree(bundled, profile_dir, dirs_exist_ok=True)
-            print("  Seeded .brain/ from bundled ace profile")
+            sys.exit(1)
         freshly_seeded = True
     try:
         profile = load_profile(profile_dir)
@@ -126,7 +120,7 @@ def resolve_profile(brain_path):
     except ProfileError as e:
         if freshly_seeded:
             shutil.rmtree(profile_dir, ignore_errors=True)
-        source = _profile_source() or "bundled ace"
+        source = _profile_source() or DEFAULT_PROFILE_REPO
         print(f"Error: profile at '{source}' is not a valid brain profile: {e}", file=sys.stderr)
         sys.exit(1)
     if errors:
@@ -560,7 +554,8 @@ def init_profile_folders(brain_path, profile):
         keep = os.path.join(fpath, ".keep")
         if not os.path.exists(keep):
             open(keep, "a").close()
-    print(f"  Ensured folders: {', '.join(profile.folders)}")
+    if profile.folders:
+        print(f"  Ensured folders: {', '.join(profile.folders)}")
 
 
 def generate_env(brain_path, config):

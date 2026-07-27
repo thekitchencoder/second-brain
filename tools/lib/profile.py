@@ -18,6 +18,12 @@ class ProfileError(Exception):
 # parameter in the generated MCP/REST schema.
 _RESERVED_FIELD_NAMES = {"tag", "where", "created_after", "created_before"}
 
+# Highest profile.toml schema version this engine understands. Profiles evolve
+# in their own repos, so a freshly-pulled profile can be newer than the engine
+# reading it — a declared `schema` above this fails loud instead of being
+# silently misread. A missing `schema` key means 1.
+PROFILE_SCHEMA = 1
+
 
 @dataclass(frozen=True)
 class Field:
@@ -102,6 +108,14 @@ def load_profile(profile_dir: str) -> Profile:
             raise ProfileError(f"profile.toml missing required key: {key}")
         return data[key]
 
+    schema = data.get("schema", 1)
+    if not isinstance(schema, int) or isinstance(schema, bool):
+        raise ProfileError(f"profile.toml schema must be an integer, got {schema!r}")
+    if schema > PROFILE_SCHEMA:
+        raise ProfileError(
+            f"profile declares schema {schema}, but this engine supports up to "
+            f"{PROFILE_SCHEMA} — update the second-brain image")
+
     plugin_raw = require("plugin")
     for k in ("name", "author", "marker"):
         if k not in plugin_raw:
@@ -140,9 +154,6 @@ def load_profile(profile_dir: str) -> Profile:
 
 def validate_profile(profile: Profile, profile_dir: str) -> list[str]:
     errors = []
-
-    if not profile.folders:
-        errors.append("profile.folders is empty — at least one folder required")
 
     for f in profile.fields:
         if f.name in _RESERVED_FIELD_NAMES:

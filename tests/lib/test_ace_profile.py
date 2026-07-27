@@ -1,7 +1,7 @@
 import os
 from lib.profile import load_profile, validate_profile
 
-_ACE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "profiles", "ace")
+_ACE_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures", "profile-ace")
 
 
 def test_ace_profile_loads_and_validates():

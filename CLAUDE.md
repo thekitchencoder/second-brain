@@ -25,7 +25,7 @@ task shell       # Open zsh in container
 task down        # Stop and remove container
 ```
 
-`task up` bind-mounts `tools/lib/` and `profiles/ace/templates/` and sets `BRAIN_DEV=1`, so Python and template changes are live immediately. Skills are force-reseeded from the image on every restart.
+`task up` bind-mounts `tools/lib/` and sets `BRAIN_DEV=1`, so Python changes are live immediately. Set `PROFILE_HOST_PATH` in `.env.local` (a local checkout of a brain-profile repo) to seed fresh brains from it and enable `task sync-skills`. Skills are force-reseeded from the brain's profile on every restart.
 
 ### Base image dev (MCP + brain tools)
 
@@ -43,8 +43,8 @@ task logs       # Tail container logs
 | What changed | Command | Notes |
 |---|---|---|
 | `tools/lib/*.py` | just save | bind-mounted — live immediately |
-| `profiles/ace/templates/` | just save | bind-mounted — live immediately |
-| `profiles/ace/skills/` | `task sync-skills` | copies to `~/.claude/skills/`; run `/reload` in Claude Code |
+| `<profile checkout>/templates/` | re-init a fresh brain | profiles live in their own repos (see Profiles) |
+| `<profile checkout>/skills/` | `task sync-skills` | copies from `PROFILE_HOST_PATH` to `~/.claude/skills/`; run `/reload` in Claude Code |
 | Entrypoint or image env | `task restart` | skills auto-reseeded from image |
 | Dockerfile changes | `task build && task restart` | full rebuild needed |
 
@@ -80,11 +80,11 @@ Tools: `brain_search`, `brain_query`, `brain_read`, `brain_write`, `brain_create
 
 ### Skills System
 
-Skills now live in the **profile**, not the top-level repo. The bundled `ace` profile (`profiles/ace/`) carries two tiers under `skills/`:
+Skills now live in the **profile**, not the top-level repo. The default `ace` profile ([brain-profile-ace](https://github.com/thekitchencoder/brain-profile-ace)) carries two tiers under `skills/`:
 - **`skills/global/`** — 11 skills: MCP-only, work from any host session via the Claude Code plugin staged at `<brain>/.ai/brain-plugin/`. Includes brain-capture, brain-connect, brain-context, brain-create-effort, brain-distil, brain-effort, brain-project, brain-save, brain-setup, brain-surface, brain-triage.
 - **`skills/vault/`** — 5 skills: need direct filesystem access (mv, Glob, Edit). Includes brain-daily, brain-extract, brain-hygiene, brain-rename, brain-reorganise.
 
-`brain-init` resolves a profile into `<brain>/.brain/` (see "Profiles" below), copies the vault tier into `<brain>/.claude/skills/`, and stages the global tier (plus hooks and plugin identity) into `<brain>/.ai/brain-plugin/`. `tools/setup.sh`'s `seed_skills_from_profile` then copies both tiers from `<brain>/.brain/skills/{global,vault}` into the container's `~/.claude/skills/` on every start. When editing the bundled skills, edit them under `profiles/ace/skills/global/` or `profiles/ace/skills/vault/` — the old top-level `skills/`/`brain-skills/` directories no longer exist.
+`brain-init` resolves a profile into `<brain>/.brain/` (see "Profiles" below), copies the vault tier into `<brain>/.claude/skills/`, and stages the global tier (plus hooks and plugin identity) into `<brain>/.ai/brain-plugin/`. `tools/setup.sh`'s `seed_skills_from_profile` then copies both tiers from `<brain>/.brain/skills/{global,vault}` into the container's `~/.claude/skills/` on every start. When editing the default skills, edit them in the `brain-profile-ace` repo (a sibling checkout) — the engine repo no longer contains any profile content.
 
 ### Profiles
 
@@ -92,13 +92,13 @@ A brain is self-describing: everything skill-, template-, hook-, and plugin-iden
 
 Source precedence, resolved only when `<brain>/.brain/profile.toml` is absent:
 1. A custom source — `brain-init --profile-repo <url-or-path>` or `-e BRAIN_PROFILE_REPO=<url-or-path>` for the container — git-cloned (URL or existing git repo) or copied (plain local dir) into `.brain/`.
-2. The bundled `ace` profile (`profiles/ace/`, or `/usr/local/lib/brain-tools/profiles/ace` in the container) — copied in as the zero-config, offline default.
+2. The default profile — `git clone` of `https://github.com/thekitchencoder/brain-profile-ace` (first init needs network, or a local `BRAIN_PROFILE_REPO` source).
 
-`brain-profile show` prints the active profile's identity and origin; `brain-profile update` runs `git pull --ff-only` against a cloned profile (a no-op for the bundled/copied default, which isn't a git clone).
+`brain-profile show` prints the active profile's identity and origin; `brain-profile update` runs `git pull --ff-only` against a cloned profile (works for any cloned profile, including the default; a no-op for copied plain-dir profiles).
 
 ### Brain Structure Convention (ACE-aligned)
 
-Notes are organized as `Atlas/`, `Efforts/`, `Cards/`, `Calendar/`, `Sources/` — the bundled `ace` profile's `folders`. Templates in `profiles/ace/templates/` define frontmatter schemas per note type; `brain-init` copies them into `<brain>/.zk/templates/` and composes `<brain>/.zk/config.toml` from engine-owned zk infra plus the profile's `[zk]` conventions. `brain-init` creates the brain scaffold including `.brain/`, `.zk/`, `.ai/`, `.vscode/`, `.claude/skills/`, and optionally the ACE folder structure.
+Notes are organized as `Atlas/`, `Efforts/`, `Cards/`, `Calendar/`, `Sources/` — the bundled `ace` profile's `folders`. Templates in the profile repo's `templates/` define frontmatter schemas per note type; `brain-init` copies them into `<brain>/.zk/templates/` and composes `<brain>/.zk/config.toml` from engine-owned zk infra plus the profile's `[zk]` conventions. `brain-init` creates the brain scaffold including `.brain/`, `.zk/`, `.ai/`, `.vscode/`, `.claude/skills/`, and optionally the ACE folder structure.
 
 ### Embedding Configuration
 
@@ -120,7 +120,7 @@ All model endpoints are configurable via `.env` in the brain root (generated by 
 | `tools/lib/credentials.py` | `PgCredentialStore` — Postgres agent-token credentials (mint/verify/revoke, hash-only) |
 | `tools/brain_admin.py` | `brain-admin` CLI — manage roles/identities/principals/tokens, local (docker-exec) or remote (`/api/admin/*`) |
 | `tools/lib/retrieval_log.py` | `PgRetrievalLog` — append-only per-principal retrieval/audit log (reads/writes/admin actions), best-effort `safe_log_*` hooks |
-| `profiles/ace/profile.toml` | Bundled profile manifest — folders, skills, plugin identity, zk conventions |
+| [brain-profile-ace](https://github.com/thekitchencoder/brain-profile-ace) | Default profile repo — folders, skills, plugin identity, zk conventions |
 | `tools/lib/profile.py` | Profile loading/validation/zk-config composition (`load_profile`, `compose_zk_config`) |
 
 ## Release Process

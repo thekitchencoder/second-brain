@@ -7,7 +7,7 @@ _GLOBAL_SKILL_NAMES dropped (10 of 11 skills). See the spec's backward-compat no
 import os
 from lib.profile import load_profile, compose_zk_config
 
-_ACE = os.path.join(os.path.dirname(__file__), "..", "profiles", "ace")
+_ACE = os.path.join(os.path.dirname(__file__), "fixtures", "profile-ace")
 
 # Values hardcoded in the pre-refactor codebase.
 _OLD_ACE_FOLDERS = ["Atlas", "Efforts", "Cards", "Calendar", "Sources"]

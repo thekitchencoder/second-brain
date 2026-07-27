@@ -194,21 +194,37 @@ your-brain/
 
 `.brain/`, `.zk/`, `.ai/`, `.claude/`, and `.vscode/` are ignored by Obsidian. The brain remains fully compatible with Obsidian on your host machine. `brain-init` auto-adds `.ai/`, `.zk/`, and `.brain/.git/` to the brain's `.gitignore` — if you sync the brain with Obsidian Sync or another tool, exclude those same paths there too.
 
-## Custom profiles
+## Profiles
 
 A profile is the skills, zk templates, hooks, and Claude Code plugin identity that shape a brain — everything under `<brain>/.brain/`. Every brain has exactly one, resolved once on first `brain-init` and reseeded/updated (never hand-edited) after that.
 
-**Default: bundled `ace`.** With no configuration, `brain-init` copies the `ace` profile baked into the image — zero config, works fully offline, no network required. This is what you get from a plain `docker run`.
+### Default: `brain-profile-ace` (remote)
 
-**Custom profile.** Fork `profiles/ace/` from the [second-brain repo](https://github.com/thekitchencoder/second-brain), edit `profile.toml` (folders, skills, plugin identity, zk conventions) and the `skills/`, `templates/`, `hooks/` it references, then host the result as a git repository (a fork, a private repo, anything `git clone` can reach) or just a local directory.
+With no configuration, `brain-init` clones
+[brain-profile-ace](https://github.com/thekitchencoder/brain-profile-ace) —
+this is what a plain `docker run` gets. **First init needs network access**;
+after that the brain is self-contained and everything works offline.
 
-Point a new brain at it:
+### Installing a different profile
+
+Point the first init at any profile — a published flavour like
+[brain-profile-obsidian](https://github.com/thekitchencoder/brain-profile-obsidian),
+your own fork, or a local directory:
 
 ```bash
-# Container — via env var
+# Container — via env var (git URL, cloned)
 docker run -d --name brain \
   -v ~/Documents/brain:/brain \
-  -e BRAIN_PROFILE_REPO=https://github.com/you/my-brain-profile.git \
+  -e BRAIN_PROFILE_REPO=https://github.com/thekitchencoder/brain-profile-obsidian \
+  -p 7779:7779 -p 7780:7780 \
+  kitchencoder/second-brain:latest
+
+# Container — via a local directory (no network needed; plain dirs are
+# copied, git checkouts are cloned)
+docker run -d --name brain \
+  -v ~/Documents/brain:/brain \
+  -v ~/profiles/my-profile:/profile-src \
+  -e BRAIN_PROFILE_REPO=/profile-src \
   -p 7779:7779 -p 7780:7780 \
   kitchencoder/second-brain:latest
 
@@ -217,13 +233,17 @@ brain-init --profile-repo https://github.com/you/my-brain-profile.git /path/to/b
 brain-init --profile-repo /path/to/local/profile-dir /path/to/brain
 ```
 
-`BRAIN_PROFILE_REPO` / `--profile-repo` is only consulted the **first** time `brain-init` runs against a vault (when `.brain/profile.toml` doesn't exist yet). A git URL or existing git repo is `git clone`d; a plain local directory is copied. Because a custom profile clone happens on first init, **that first run needs network access** — the bundled `ace` default never does, since it's copied from the image.
+`BRAIN_PROFILE_REPO` / `--profile-repo` is only consulted the **first** time `brain-init` runs against a vault (when `.brain/profile.toml` doesn't exist yet). A git URL or existing git repo is `git clone`d; a plain local directory is copied. A local source is also the **offline / air-gapped path**: clone or copy a profile repo onto the machine first, then point `BRAIN_PROFILE_REPO` at it.
 
-Once seeded, manage the profile with:
+### Making your own
+
+Fork [brain-profile-ace](https://github.com/thekitchencoder/brain-profile-ace), edit `profile.toml` (folders, skills, plugin identity, zk conventions) and the `skills/`, `templates/`, `hooks/` it references, then host the result anywhere `git clone` can reach — or keep it as a local directory. Keep the manifest's `schema = 1` line: it declares the `profile.toml` format version, and an engine older than the declared schema refuses the profile rather than misreading it.
+
+### Managing a seeded profile
 
 ```bash
 brain-profile show     # print the active profile's identity and origin
-brain-profile update   # git pull the profile (no-op unless it's a git clone)
+brain-profile update   # git pull --ff-only the profile clone
 ```
 
-`brain-profile update` only does something for a cloned custom profile — the bundled/copied `ace` default isn't a git clone, so it reports there's nothing to update. To pick up new upstream `ace` skills or templates, re-run `brain-init` after upgrading the image.
+Cloned profiles (including the default) fast-forward to their repo's latest with `brain-profile update`. A profile copied from a plain local directory isn't a git clone — re-seed it by re-running `brain-init` against a fresh vault, or manage the source dir yourself.

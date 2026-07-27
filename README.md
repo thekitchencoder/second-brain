@@ -52,7 +52,7 @@ The `brain-init` wizard will guide you through picking your model provider and e
 - **Semantic Search**: Find notes by meaning, not just keywords.
 - **MCP Server**: Expose your brain tools to any Model Context Protocol client.
 - **Claude Code Integration**: Custom skills for note capture, triage, and management.
-- **Profiles**: One engine runs many brains — the bundled `ace` profile is the zero-config default; custom profiles (folders, skills, templates, queryable fields) are cloneable and forkable.
+- **Profiles**: One engine runs many brains — the default [ace profile](https://github.com/thekitchencoder/brain-profile-ace) is cloned on first init; flavours like [obsidian](https://github.com/thekitchencoder/brain-profile-obsidian) and custom forks (folders, skills, templates, queryable fields) are one env var away.
 - **Multi-platform**: Runs anywhere Docker does; works with Obsidian and VS Code on the host.
 - **Privacy First**: Designed to run with local models via Docker Model Runner or Ollama.
 
@@ -66,7 +66,7 @@ character.
 
 **Landed on `main`** (unreleased):
 - Profile-driven engine — a brain self-describes via `<brain>/.brain/`
-- Custom-profile distribution — clone/update a profile; bundled `ace` stays the zero-config default
+- Custom-profile distribution — profiles live in their own public repos ([ace](https://github.com/thekitchencoder/brain-profile-ace), [obsidian](https://github.com/thekitchencoder/brain-profile-obsidian)); the default is cloned from `brain-profile-ace` on first init
 - Profile-driven queries — metadata filters adapt to each profile's fields
 - Auth gate (Seam 6) — static per-principal bearer tokens and an OAuth 2.1 authorization
   server, shipped behind `profile.auth.mode = "oauth"` (default `none`, a total no-op). See
@@ -74,7 +74,6 @@ character.
 
 **Planned:**
 - Content visibility / RBAC enforcement built on top of the auth gate (Seam 7)
-- Public, forkable profile repositories (community profiles)
 
 These land as **interim pull requests that merge without cutting a release** — the image on
 `:latest` is the last tagged version, and a version bump and new release will come once the

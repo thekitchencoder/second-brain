@@ -24,7 +24,7 @@ if "openai" not in sys.modules:
 from lib.brain import handle_brain_query
 from lib.profile import load_profile
 
-_ACE_PROFILE_DIR = os.path.join(os.path.dirname(__file__), "..", "profiles", "ace")
+_ACE_PROFILE_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "profile-ace")
 _ACE_FIELDS = load_profile(_ACE_PROFILE_DIR).fields
 
 

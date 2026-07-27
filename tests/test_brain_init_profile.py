@@ -11,9 +11,18 @@ _BRAIN_INIT_CANDIDATES = [
 ]
 _BRAIN_INIT = next(p for p in _BRAIN_INIT_CANDIDATES if os.path.isfile(p))
 
+_FIXTURE_ACE = os.path.join(_HERE, "fixtures", "profile-ace")
+
+# Forces any accidental network clone to fail fast and deterministically,
+# online or offline.
+_DEAD_PROXY = {"https_proxy": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9"}
+
 
 def _run_init(brain_path):
-    env = dict(os.environ, BRAIN_PATH=str(brain_path))
+    # Unit tests seed from the frozen fixture; the remote-default path has
+    # its own dedicated tests below.
+    env = dict(os.environ, BRAIN_PATH=str(brain_path),
+               BRAIN_PROFILE_REPO=_FIXTURE_ACE)
     return subprocess.run(
         [sys.executable, _BRAIN_INIT, "--auto", str(brain_path)],
         capture_output=True, text=True, env=env,
@@ -182,13 +191,35 @@ def test_profile_repo_env_copies_plain_dir(tmp_path):
     assert not (brain / ".brain" / ".git").exists()  # copied, not cloned
 
 
-def test_no_profile_repo_uses_bundled_ace_offline(tmp_path):
-    # The default path is unchanged and needs no source.
+def test_default_source_is_remote_and_fails_loud_when_unreachable(tmp_path):
+    # No custom source → brain-init attempts the default remote clone. The
+    # dead proxy makes it fail; the error must name the URL and the remedy.
     brain = tmp_path / "brain3"; brain.mkdir()
+    env = dict(os.environ, BRAIN_PATH=str(brain), **_DEAD_PROXY)
+    env.pop("BRAIN_PROFILE_REPO", None)
     r = _sp.run([sys.executable, _BRAIN_INIT, "--auto", str(brain)],
-                capture_output=True, text=True, env=dict(os.environ, BRAIN_PATH=str(brain)))
+                capture_output=True, text=True, env=env)
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "https://github.com/thekitchencoder/brain-profile-ace" in out
+    assert "BRAIN_PROFILE_REPO" in out
+    assert "traceback" not in out.lower()
+    assert not (brain / ".brain" / "profile.toml").exists()
+
+
+def test_existing_brain_short_circuits_default_clone(tmp_path):
+    # A brain with .brain/profile.toml never resolves a source → no network.
+    brain = tmp_path / "brain4"; brain.mkdir()
+    seed_env = dict(os.environ, BRAIN_PATH=str(brain),
+                    BRAIN_PROFILE_REPO=_FIXTURE_ACE)
+    r = _sp.run([sys.executable, _BRAIN_INIT, "--auto", str(brain)],
+                capture_output=True, text=True, env=seed_env)
     assert r.returncode == 0, r.stderr
-    assert tomllib.loads((brain / ".brain" / "profile.toml").read_text())["name"] == "ace"
+    env = dict(os.environ, BRAIN_PATH=str(brain), **_DEAD_PROXY)
+    env.pop("BRAIN_PROFILE_REPO", None)
+    r = _sp.run([sys.executable, _BRAIN_INIT, "--auto", str(brain)],
+                capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
 
 
 def test_profile_repo_value_equal_to_brain_path_is_not_swallowed(tmp_path):
