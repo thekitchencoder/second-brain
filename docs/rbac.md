@@ -193,24 +193,117 @@ folder) — not a leak channel to patch around in code. Fixing the profile
 (moving the note, or aligning the role's folders/layers) is the correct
 remedy, not adding write-path special-casing.
 
-## Deferred: audit log and admin UI
+## Administering policy
 
-Two things a production RBAC deployment usually wants are **explicitly out of
-scope for this build**:
+Policy — roles, identities, principal→role mappings, the default role — is
+managed through the admin plane, not by hand-editing `profile.toml` on a
+running brain: the `brain-admin` CLI and the REST routes it wraps,
+`/api/admin/*`. Both write the same thing, through the same writer
+(`lib.policy_edit.PolicyEditor`): **every mutation is a git commit to the
+profile repo.** There is no policy table in Postgres — the profile repo
+remains the single source of policy truth. (What *does* live in Postgres,
+if you opt in, is agent-token credentials — see
+[Token lifecycle](#token-lifecycle-agent-credentials) below — and, in the
+full-stack tier, the vector index; see
+[docs/recipes/full-stack-compose.md](recipes/full-stack-compose.md).)
 
-- **A retrieval/audit log** — a record of which principal read or was denied
-  which note, for after-the-fact review. `lib/visibility.py` names the single
-  choke point (`visible()`/`can_write()`) where such a hook belongs, precisely
-  so it can be added later without re-threading the call sites — but no
-  logging is wired up here.
-- **An admin UI** for managing roles, principals, and layer assignments
-  without hand-editing `profile.toml` and `.env`.
+### The git-truth model
 
-Both are **RBAC-tier, store-backed follow-ups** — they depend on the
-store-agnostic `PolicyProvider`/vector-store-port work that generalizes this
-feature beyond the bundled sqlite-vec store, which is also not part of this
-build. Today, RBAC configuration is entirely file-based (`profile.toml` +
-`BRAIN_AUTH_PRINCIPAL_TOKENS`/`BRAIN_AUTH_*` env vars) and unaudited.
+- Every `role set`, `role rm`, `identity map`/`unmap`, `principal set`/`rm`,
+  and `default-role set` operation reads `profile.toml`, rewrites only the
+  changed `[auth.rbac]` table with `tomlkit` (preserving comments and
+  unrelated content), and commits it (`policy: <description>`) to the
+  profile repo. `git log` on the profile clone is the audit trail for policy
+  changes.
+- Edits are idempotent: re-applying an already-current role or mapping is a
+  no-op that returns the current `HEAD` sha rather than creating an empty
+  commit.
+- A failed commit (e.g. a rejecting pre-commit hook) rolls the working file
+  back to its pre-edit content — the live policy a running provider reads is
+  never left mid-mutation.
+- `ProfilePolicyProvider` hot-reloads `profile.toml` on mtime change (see
+  [docs/auth.md](auth.md)), so a policy edit takes effect on the next request
+  with no restart.
+
+### `brain-admin` — local and remote
+
+`brain-admin` reaches policy through one of two transports, chosen by
+whether `--url`/`BRAIN_API_URL` is set:
+
+- **Local (default)** — operates directly on the profile repo and, for
+  `token` subcommands, Postgres. This is the `docker exec` recovery path: it
+  needs no running `brain-api` and no network, so it still works if the API
+  is down or auth is misconfigured.
+
+  ```bash
+  docker exec -it brain brain-admin role set maker --read '*' --write '*'
+  docker exec -it brain brain-admin principal set fenn-desk maker
+  docker exec -it brain brain-admin token mint fenn-desk
+  ```
+
+- **Remote** — talks to `/api/admin/*` over HTTP with a bearer token
+  (`--token`/`BRAIN_ADMIN_TOKEN`), for admins without shell access to the
+  container:
+
+  ```bash
+  brain-admin --url https://brain.example.com --token "$BRAIN_ADMIN_TOKEN" \
+    role set maker --read '*' --write '*'
+  ```
+
+Both transports raise the same two exception shapes — `PolicyEditError` for
+user mistakes (unknown role, malformed layer list) and `RuntimeError` for
+infra problems (unreachable API, misconfigured credentials) — so scripting
+against either transport looks the same.
+
+### Token lifecycle (agent credentials)
+
+`token mint`/`token revoke`/`token list` only work when
+`BRAIN_POLICY_CREDENTIALS=postgres` (see
+[docs/auth.md](auth.md#env-var-reference)): they mint/revoke rows in
+Postgres's `agent_tokens` table via `lib.credentials.PgCredentialStore`,
+never in the profile repo — credentials and role grants are deliberately
+different kinds of state (see [The git-truth model](#the-git-truth-model)
+above). A token's plaintext is printed exactly once, at `mint` time; `token
+list` and `policy show` never expose it, only the principal id and
+revocation timestamp.
+
+```bash
+brain-admin token mint fenn-desk    # prints the plaintext token once — save it now
+brain-admin token list              # principal id + created/revoked timestamps, no secrets
+brain-admin token revoke fenn-desk  # kills every active token for that principal
+```
+
+Revocation is immediate: unlike the short-lived OAuth JWTs described in
+[docs/auth.md](auth.md#token-lifecycle), a static agent token is checked
+against the live `agent_tokens` table on every request, so a revoked token
+stops working on its very next use rather than after some TTL expires.
+
+### The 404 oracle, extended to the admin plane
+
+The admin routes inherit the same oracle-safety discipline as the
+content-read paths (see
+[The oracle-safety guarantee](#the-oracle-safety-guarantee) above): every way
+to fail to reach an admin action — `mode = "none"`, no token, an
+authenticated-but-non-admin role, and a route that genuinely doesn't exist —
+returns the identical `404`. A non-admin principal cannot learn that
+`/api/admin/*` exists (versus any other unmapped path) from the response it
+gets back; `brain-admin`'s remote transport surfaces all of these uniformly
+as "not found or not authorized" rather than distinguishing them.
+
+## Deferred: retrieval audit log
+
+Managing roles, principals, and layer assignments without hand-editing
+`profile.toml` and `.env` is **no longer deferred** — see
+[Administering policy](#administering-policy) above.
+
+What remains explicitly out of scope for this build is **a retrieval/audit
+log** — a record of which principal read or was denied which note, for
+after-the-fact review. `lib/visibility.py` names the single choke point
+(`visible()`/`can_write()`) where such a hook belongs, precisely so it can be
+added later without re-threading the call sites — but no logging is wired up
+here. (Policy *mutations* already have their own audit trail: every admin
+write is a git commit, visible in `git log` on the profile repo — see
+[The git-truth model](#the-git-truth-model) above.)
 
 ## Backward compatibility
 
@@ -244,7 +337,12 @@ turning on `[auth.rbac]` so `layer` is populated before you rely on it.
 - [docs/auth.md](auth.md) — the token/principal resolution layer this feature
   is built on (bearer tokens, OAuth 2.1, static principals).
 - [docs/recipes/full-stack-compose.md](recipes/full-stack-compose.md) — running
-  the full-stack (Postgres/pgvector) tier this page's store-side wall applies to.
+  the full-stack (Postgres/pgvector) tier this page's store-side wall applies to,
+  including minting agent tokens with `brain-admin`.
+- `tools/lib/policy_edit.py` (`PolicyEditor`) — the only writer of policy;
+  every role/identity/principal change is a git commit.
+- `tools/brain_admin.py` — the `brain-admin` CLI (local + remote transports)
+  documented in [Administering policy](#administering-policy) above.
 - `tests/test_visibility_enforcement.py` — end-to-end enforcement tests across
   both the shared `handle_brain_*` handlers and the REST routes in
   `tools/brain_api.py`, plus the anti-drift signature checks that fail CI if a

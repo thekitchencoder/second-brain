@@ -5,8 +5,34 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 
-from lib.auth import Principal, OWNER, resolve_static, resolve_principal, role_layers, AuthSettings
+from lib.auth import Principal, OWNER, resolve_principal, role_layers, AuthSettings, _principal_tokens
 from lib.profile import Auth, Rbac, Profile, Plugin
+from lib.policy import ProfilePolicyProvider
+
+
+class _Provider:
+    """Provider-shaped stub over a Profile's mode/rbac — mirrors the subset of
+    ProfilePolicyProvider's interface resolve_principal() consumes, without
+    needing a profile.toml on disk for every case. Agent-token verification
+    delegates to the same env-backend check the real provider uses (constant-
+    time compare via lib.auth._principal_tokens), so static-token tests still
+    exercise real matching semantics, not a re-implementation."""
+
+    def __init__(self, profile):
+        self._profile = profile
+
+    def get_auth_mode(self) -> str:
+        return self._profile.auth.mode
+
+    def get_rbac(self):
+        return self._profile.auth.rbac
+
+    def verify_agent_token(self, token: str) -> str | None:
+        import hmac
+        for pid, secret in _principal_tokens().items():
+            if hmac.compare_digest(token, secret):
+                return pid
+        return None
 
 
 def _profile(mode, rbac=None):
@@ -20,9 +46,36 @@ def _rbac():
                 identities={}, principals={"fenn-agent": "fenn-agent"})
 
 
+_BASE_TOML = """
+name = "t"
+folders = ["x"]
+
+[plugin]
+name = "p"
+author = "a"
+marker = "m"
+
+[auth]
+mode = "oauth"
+"""
+
+
+@pytest.fixture
+def profile_dir(tmp_path):
+    (tmp_path / "profile.toml").write_text(_BASE_TOML)
+    return str(tmp_path)
+
+
 def test_mode_none_returns_owner_without_token(monkeypatch):
     monkeypatch.delenv("BRAIN_AUTH_PRINCIPAL_TOKENS", raising=False)
-    assert resolve_principal(None, _profile("none"), None) is OWNER
+    assert resolve_principal(None, _Provider(_profile("none")), None) is OWNER
+
+
+def test_resolve_principal_uses_provider_mode_override(profile_dir, monkeypatch):
+    # env seam: profile says oauth, env says none -> OWNER without a token
+    monkeypatch.setenv("BRAIN_AUTH_MODE", "none")
+    p = ProfilePolicyProvider(profile_dir)
+    assert resolve_principal(None, p, None) is OWNER
 
 
 def test_role_layers_reads_role_spec():
@@ -32,7 +85,7 @@ def test_role_layers_reads_role_spec():
 
 def test_static_token_resolves_to_principal(monkeypatch):
     monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"fenn-agent": "s3cret"}))
-    prof = _profile("oauth", _rbac())
+    prof = _Provider(_profile("oauth", _rbac()))
     p = resolve_principal("s3cret", prof, None)
     assert p == Principal(id="fenn-agent", role="fenn-agent",
                           read_layers=("fiction",), write_layers=("fiction",), kind="static")
@@ -40,19 +93,31 @@ def test_static_token_resolves_to_principal(monkeypatch):
 
 def test_wrong_token_is_denied(monkeypatch):
     monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"fenn-agent": "s3cret"}))
-    prof = _profile("oauth", _rbac())
+    prof = _Provider(_profile("oauth", _rbac()))
     assert resolve_principal("nope", prof, None) is None
 
 
 def test_token_for_unmapped_principal_is_denied(monkeypatch):
     # token id 'ghost' has no entry in rbac.principals
     monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"ghost": "s3cret"}))
-    prof = _profile("oauth", _rbac())
+    prof = _Provider(_profile("oauth", _rbac()))
     assert resolve_principal("s3cret", prof, None) is None
 
 
 def test_oauth_missing_token_is_denied():
-    assert resolve_principal(None, _profile("oauth", _rbac()), None) is None
+    assert resolve_principal(None, _Provider(_profile("oauth", _rbac())), None) is None
+
+
+def test_resolve_agent_matches_via_provider_env_backend(monkeypatch):
+    """resolve_agent() itself — no direct secret comparison, delegates entirely
+    to provider.verify_agent_token() (the env backend's constant-time compare)."""
+    from lib.auth import resolve_agent
+    monkeypatch.setenv("BRAIN_AUTH_PRINCIPAL_TOKENS", json.dumps({"fenn-agent": "s3cret"}))
+    provider = _Provider(_profile("oauth", _rbac()))
+    p = resolve_agent("s3cret", _rbac(), provider)
+    assert p == Principal(id="fenn-agent", role="fenn-agent",
+                          read_layers=("fiction",), write_layers=("fiction",), kind="static")
+    assert resolve_agent("nope", _rbac(), provider) is None
 
 
 @pytest.fixture
@@ -97,7 +162,7 @@ def test_jwt_maps_identity_to_role(settings, monkeypatch):
     rbac = Rbac(default_role=None,
                 roles={"owner": {"layers": ["*"]}},
                 identities={"chris@example.com": "owner"}, principals={})
-    prof = _profile("oauth", rbac)
+    prof = _Provider(_profile("oauth", rbac))
     token = settings.issue_jwt("chris@example.com", extra={"email": "chris@example.com"})
     p = resolve_principal(token, prof, settings)
     assert p == Principal(id="chris@example.com", role="owner",
@@ -108,7 +173,7 @@ def test_jwt_unknown_subject_uses_default_role(settings, monkeypatch):
     monkeypatch.delenv("BRAIN_AUTH_PRINCIPAL_TOKENS", raising=False)
     rbac = Rbac(default_role="guest",
                 roles={"guest": {"layers": []}}, identities={}, principals={})
-    prof = _profile("oauth", rbac)
+    prof = _Provider(_profile("oauth", rbac))
     token = settings.issue_jwt("stranger@example.com", extra={"email": "stranger@example.com"})
     p = resolve_principal(token, prof, settings)
     assert p.role == "guest" and p.kind == "oauth"
@@ -118,7 +183,7 @@ def test_jwt_unknown_subject_denied_without_default(settings, monkeypatch):
     monkeypatch.delenv("BRAIN_AUTH_PRINCIPAL_TOKENS", raising=False)
     rbac = Rbac(default_role=None, roles={"owner": {"layers": ["*"]}},
                 identities={}, principals={})
-    prof = _profile("oauth", rbac)
+    prof = _Provider(_profile("oauth", rbac))
     token = settings.issue_jwt("stranger@example.com", extra={"email": "stranger@example.com"})
     assert resolve_principal(token, prof, settings) is None
 
@@ -166,7 +231,7 @@ def test_refresh_token_rejected_as_bearer(settings, monkeypatch):
     monkeypatch.delenv("BRAIN_AUTH_PRINCIPAL_TOKENS", raising=False)
     rbac = Rbac(default_role=None, roles={"owner": {"layers": ["*"]}},
                 identities={"chris@example.com": "owner"}, principals={})
-    prof = _profile("oauth", rbac)
+    prof = _Provider(_profile("oauth", rbac))
     refresh = settings.issue_jwt("chris@example.com",
                                  extra={"email": "chris@example.com", "typ": "refresh"},
                                  ttl=30 * 86400)
@@ -184,6 +249,6 @@ def test_static_principal_gets_role_layers(monkeypatch):
     rbac = Rbac(default_role=None,
                 roles={"agent": {"read": ["fiction"], "write": []}},
                 identities={}, principals={"agent": "agent"})
-    prof = _profile("oauth", rbac)
+    prof = _Provider(_profile("oauth", rbac))
     p = resolve_principal("s3cret", prof, None)
     assert p.read_layers == ("fiction",) and p.write_layers == ()

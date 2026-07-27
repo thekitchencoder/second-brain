@@ -1,13 +1,13 @@
 """Authentication core — resolve a bearer token to a Principal.
 
 Framework-agnostic. brain_api (REST) and brain_mcp_server (MCP HTTP) both call
-resolve_principal() at their request boundary. Gated on profile.auth.mode:
+resolve_principal() at their request boundary, passing a PolicyProvider (see
+lib/policy.py) rather than a raw profile. Gated on provider.get_auth_mode():
 "none" bypasses entirely (OWNER); "oauth" enforces static tokens then JWTs.
 No request input may influence the resulting role — the token IS the principal.
 """
 from __future__ import annotations
 
-import hmac
 import json
 import os
 import time
@@ -60,18 +60,23 @@ def _principal_tokens() -> dict[str, str]:
     return {str(k): str(v) for k, v in data.items()}
 
 
-def resolve_static(token: str, rbac) -> Principal | None:
-    """Match token against configured static principal tokens (constant-time)."""
-    for pid, secret in _principal_tokens().items():
-        if hmac.compare_digest(token, secret):
-            role = (rbac.principals or {}).get(pid)
-            if not role or role not in (rbac.roles or {}):
-                return None
-            return Principal(id=pid, role=role,
-                             read_layers=role_layers(rbac, role, "read"),
-                             write_layers=role_layers(rbac, role, "write"),
-                             kind="static")
-    return None
+def resolve_agent(token: str, rbac, provider) -> Principal | None:
+    """Match an agent bearer token via the provider's credential backend.
+
+    The constant-time secret comparison lives inside the provider (its env
+    backend, or the Postgres credential store) — this function never touches
+    the raw secret, only the principal id the provider hands back.
+    """
+    pid = provider.verify_agent_token(token)
+    if pid is None:
+        return None
+    role = (rbac.principals or {}).get(pid)
+    if not role or role not in (rbac.roles or {}):
+        return None
+    return Principal(id=pid, role=role,
+                     read_layers=role_layers(rbac, role, "read"),
+                     write_layers=role_layers(rbac, role, "write"),
+                     kind="static")
 
 
 class AuthSettings:
@@ -167,12 +172,18 @@ def resolve_jwt(token: str, rbac, settings) -> Principal | None:
                      kind="oauth")
 
 
-def resolve_principal(token, profile, settings) -> Principal | None:
-    if profile.auth.mode == "none":
+def resolve_principal(token, provider, settings) -> Principal | None:
+    """Resolve a bearer token to a Principal via a PolicyProvider.
+
+    `provider` is a PolicyProvider (see lib/policy.py) — it owns auth-mode
+    resolution (including the BRAIN_AUTH_MODE env seam) and rbac hot-reload,
+    so this function never reads profile.auth directly.
+    """
+    if provider.get_auth_mode() == "none":
         return OWNER
     if not token:
         return None
-    rbac = profile.auth.rbac
+    rbac = provider.get_rbac()
     if rbac is None:
         return None
-    return resolve_static(token, rbac) or resolve_jwt(token, rbac, settings)
+    return resolve_agent(token, rbac, provider) or resolve_jwt(token, rbac, settings)

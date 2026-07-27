@@ -16,6 +16,14 @@ reaches its end state. See the [Roadmap](README.md#roadmap).
   search with native layer filtering (recall-correct by construction).
 - Image tiers: `:oauth` (twin tags of core) and `:full` (adds psycopg);
   compose recipe in `docs/recipes/full-stack-compose.md`.
+- Admin plane: `/api/admin/*` (owner-gated, oracle-safe 404s) and the
+  `brain-admin` CLI. Policy edits are git commits to the profile repo —
+  the profile stays the single source of policy truth.
+- Postgres agent-token credentials (`BRAIN_POLICY_CREDENTIALS=postgres`):
+  hashed bearer tokens with instant revocation; minted via brain-admin.
+- `BRAIN_AUTH_MODE` env override — one profile repo can serve an
+  owner-only local instance and an oauth+RBAC deployment.
+- Policy hot-reload: rbac changes apply without restart.
 
 ### Deprecated
 - The `:ui` image is no longer published. Build your own thin layer —

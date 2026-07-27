@@ -67,6 +67,7 @@ RUN chmod +x /usr/local/lib/brain-tools/brain-index \
               /usr/local/lib/brain-tools/brain-api \
               /usr/local/lib/brain-tools/brain-init \
               /usr/local/lib/brain-tools/brain-profile \
+              /usr/local/lib/brain-tools/brain-admin \
               /usr/local/lib/brain-tools/brain-template-sync \
               /usr/local/lib/brain-tools/entrypoint.sh \
               /usr/local/lib/brain-tools/setup.sh

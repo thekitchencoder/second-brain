@@ -79,6 +79,12 @@ def _load_auth(auth_raw: dict) -> Auth:
 def role_action_layers(rbac, role: str, action: str) -> list:
     """Return the read/write layer list for a role. Legacy `layers` satisfies both."""
     spec = (rbac.roles or {}).get(role) or {}
+    if not isinstance(spec, dict):
+        # Hand-corrupted TOML (e.g. `roles.foo = "bar"`) — fail closed to no
+        # layers rather than crashing resolve_agent/resolve_jwt with a 500,
+        # which would otherwise leak a distinguishing signal above the
+        # admin gate's oracle-safe 404.
+        return []
     if action in spec:
         return list(spec[action] or [])
     return list(spec.get("layers", []))

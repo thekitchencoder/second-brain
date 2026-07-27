@@ -15,11 +15,13 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from lib.auth import resolve_principal, AuthSettings, Principal
 from lib.config import Config
+from lib.policy import get_policy_provider
 from lib.oauth_server import (
     AuthState,
     ClientStore,
@@ -60,6 +62,7 @@ from lib.brain import (
 
 _cfg = Config()
 _auth_settings = AuthSettings.from_env()
+_policy = get_policy_provider(_cfg)
 _client_store = ClientStore(os.path.join(_cfg.brain_path, ".ai", "oauth-clients.json"))
 _auth_state = AuthState()
 _refresh_store = RefreshStore(os.path.join(_cfg.brain_path, ".ai", "oauth-refresh.json"))
@@ -79,8 +82,7 @@ def _www_authenticate() -> str:
 
 
 def require_principal(request: Request) -> Principal:
-    profile = _cfg.load_profile()
-    principal = resolve_principal(_bearer(request), profile, _auth_settings)
+    principal = resolve_principal(_bearer(request), _policy, _auth_settings)
     if principal is None:
         raise HTTPException(status_code=401, detail="Unauthorized",
                             headers={"WWW-Authenticate": _www_authenticate()})
@@ -101,11 +103,24 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
+
+@app.middleware("http")
+async def _admin_oracle_guard(request: Request, call_next):
+    response = await call_next(request)
+    # Oracle discipline for the admin surface: the router resolves
+    # method-mismatch (405) and slash-redirects (307/308) BEFORE the
+    # admin gate dependency runs, which would let an unauthenticated
+    # caller map which admin routes exist. Normalize them to the same
+    # 404 an absent route produces. Scoped strictly to /api/admin.
+    if request.url.path.startswith("/api/admin") and response.status_code in (405, 307, 308):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return response
+
 # The upstream authlib client uses Starlette session state for its CSRF `state`.
 # Add the session middleware once, in oauth mode only. Derive a dedicated secret
 # (never a raw PEM prefix — the first ~28 chars of a PKCS8 PEM are the constant
 # header) and hard-fail rather than silently defaulting to a dev value.
-if _cfg.load_profile().auth.mode == "oauth":
+if _policy.get_auth_mode() == "oauth":
     import hashlib
     from starlette.middleware.sessions import SessionMiddleware
     _signing = os.environ.get("BRAIN_AUTH_SIGNING_KEY")
@@ -117,7 +132,7 @@ if _cfg.load_profile().auth.mode == "oauth":
 
 
 def _oauth_enabled() -> bool:
-    return _cfg.load_profile().auth.mode == "oauth"
+    return _policy.get_auth_mode() == "oauth"
 
 
 @app.get("/.well-known/oauth-protected-resource")
@@ -813,6 +828,139 @@ def restore_note(filepath: str, principal: Principal = Depends(require_principal
 def list_templates(principal: Principal = Depends(require_principal)):
     """List available note templates."""
     return _list_template_names(brain_path=_cfg.brain_path)
+
+
+# ── Admin plane (slice 2) ────────────────────────────────────────────
+# Policy truth is the profile repo: every mutation below delegates to
+# PolicyEditor (a git commit) or PgCredentialStore (credentials only).
+# Slice 3's audit log hooks in at these mutation points.
+
+
+def _is_admin(principal: Principal) -> bool:
+    rbac = _policy.get_rbac()
+    if rbac is None or principal is None:
+        return False
+    spec = (rbac.roles or {}).get(getattr(principal, "role", None) or "") or {}
+    if not isinstance(spec, dict):
+        return False
+    return spec.get("admin") is True
+
+
+def _require_admin(request: Request) -> Principal:
+    # Oracle discipline: everything short of an authenticated admin gets
+    # the same 404 the route would produce if it didn't exist.
+    if _policy.get_auth_mode() != "oauth":
+        raise HTTPException(404, "Not Found")
+    principal = resolve_principal(_bearer(request), _policy, _auth_settings)
+    if principal is None or not _is_admin(principal):
+        raise HTTPException(404, "Not Found")
+    return principal
+
+
+def _editor():
+    from lib.policy_edit import PolicyEditor
+    return PolicyEditor(_cfg.profile_dir)
+
+
+def _credentials():
+    if os.environ.get("BRAIN_POLICY_CREDENTIALS", "env") != "postgres":
+        raise HTTPException(503, "Token minting requires BRAIN_POLICY_CREDENTIALS=postgres")
+    from lib.credentials import get_credential_store
+    return get_credential_store(_cfg.database_url)
+
+
+def _admin_edit(op):
+    from lib.policy_edit import PolicyEditError
+    try:
+        sha = op(_editor())
+    except PolicyEditError as e:
+        raise HTTPException(400, str(e))
+    _policy.invalidate()
+    return {"commit": sha}
+
+
+class RoleSpec(BaseModel):
+    read: list[str]
+    write: list[str]
+    admin: bool = False
+
+
+class MappingSpec(BaseModel):
+    role: str
+
+
+@app.get("/api/admin/policy")
+def admin_policy(principal: Principal = Depends(_require_admin)):
+    rbac = _policy.get_rbac()
+    return {
+        "auth_mode": _policy.get_auth_mode(),
+        "credential_backend": os.environ.get("BRAIN_POLICY_CREDENTIALS", "env"),
+        "rbac": {
+            "default_role": rbac.default_role,
+            "roles": rbac.roles, "identities": rbac.identities,
+            "principals": rbac.principals,
+        } if rbac else None,
+    }
+
+
+@app.put("/api/admin/roles/{name}")
+def admin_role_set(name: str, spec: RoleSpec,
+                   principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.role_set(name, spec.read, spec.write, spec.admin))
+
+
+@app.delete("/api/admin/roles/{name}")
+def admin_role_rm(name: str, principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.role_rm(name))
+
+
+@app.put("/api/admin/identities/{subject}")
+def admin_identity_map(subject: str, spec: MappingSpec,
+                       principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.identity_map(subject, spec.role))
+
+
+@app.delete("/api/admin/identities/{subject}")
+def admin_identity_unmap(subject: str,
+                         principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.identity_unmap(subject))
+
+
+@app.put("/api/admin/principals/{pid}")
+def admin_principal_set(pid: str, spec: MappingSpec,
+                        principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.principal_set(pid, spec.role))
+
+
+@app.delete("/api/admin/principals/{pid}")
+def admin_principal_rm(pid: str,
+                       principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.principal_rm(pid))
+
+
+@app.post("/api/admin/principals/{pid}/token")
+def admin_token_mint(pid: str, principal: Principal = Depends(_require_admin)):
+    rbac = _policy.get_rbac()
+    if pid not in ((rbac.principals or {}) if rbac else {}):
+        raise HTTPException(400, f"unknown principal: {pid} — add it first "
+                                 f"(PUT /api/admin/principals/{pid})")
+    return {"principal_id": pid, "token": _credentials().mint(pid)}
+
+
+@app.delete("/api/admin/principals/{pid}/token")
+def admin_token_revoke(pid: str, principal: Principal = Depends(_require_admin)):
+    return {"principal_id": pid, "revoked": _credentials().revoke(pid)}
+
+
+@app.get("/api/admin/tokens")
+def admin_token_list(principal: Principal = Depends(_require_admin)):
+    return {"tokens": _credentials().list_tokens()}
+
+
+@app.put("/api/admin/default-role")
+def admin_default_role_set(spec: MappingSpec,
+                           principal: Principal = Depends(_require_admin)):
+    return _admin_edit(lambda ed: ed.default_role_set(spec.role))
 
 
 def main():

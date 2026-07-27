@@ -119,11 +119,12 @@ def test_resolve_principal_is_always_owner_under_ace_mode_none():
     """mode="none" short-circuits resolve_principal() before any token is even
     inspected — no bearer token, a garbage token, anything, always OWNER."""
     from lib.auth import resolve_principal, OWNER
+    from lib.policy import ProfilePolicyProvider
 
-    prof = load_profile(_ACE)
-    assert resolve_principal(None, prof, settings=None) == OWNER
-    assert resolve_principal("garbage-token", prof, settings=None) == OWNER
-    assert resolve_principal("", prof, settings=None) == OWNER
+    provider = ProfilePolicyProvider(_ACE)
+    assert resolve_principal(None, provider, settings=None) == OWNER
+    assert resolve_principal("garbage-token", provider, settings=None) == OWNER
+    assert resolve_principal("", provider, settings=None) == OWNER
 
 
 def test_read_query_unchanged_when_no_principal_is_passed(tmp_path):

@@ -34,6 +34,30 @@ mode = "none"   # or "oauth"
 Switching modes is a profile + `.env` change, not a code change. Nothing about
 `mode = "none"` deployments needs to change to adopt this — it's opt-in per brain.
 
+### The `BRAIN_AUTH_MODE` instance seam
+
+`profile.auth.mode` is the profile's *declared* mode, but the actual mode a
+running instance enforces is resolved by `lib.policy.ProfilePolicyProvider`,
+which checks the `BRAIN_AUTH_MODE` environment variable first and only falls
+back to the profile's `mode` when it's unset:
+
+```bash
+BRAIN_AUTH_MODE=none    # or: oauth
+```
+
+This exists so **one profile repo** — one set of roles, identities, and
+principal mappings — can serve both an owner-only local instance (laptop,
+`docker exec`, no network exposure) and an oauth+RBAC deployment (internet-
+facing, behind a tunnel), without maintaining two profiles or hand-editing
+`profile.toml` when you move between them: the profile stays at
+`mode = "oauth"` and the local instance simply sets `BRAIN_AUTH_MODE=none` in
+its own `.env`. An invalid value (anything but `none`/`oauth`) fails loud at
+resolution time rather than silently falling back to a default. If
+`profile.toml` is missing or unreadable *and* `BRAIN_AUTH_MODE` is unset, the
+provider fails closed (raises) rather than guessing a mode — an explicit
+`BRAIN_AUTH_MODE` always overrides that failure, by design, since it's the
+instance operator's affirmative choice.
+
 ## Env var reference
 
 These are read **only when `profile.auth.mode = "oauth"`**. In `mode = "none"`
@@ -48,7 +72,7 @@ none of them are consulted, so leaving them unset (or present but unused) is saf
 | `BRAIN_AUTH_UPSTREAM_ISSUER` | The upstream OIDC identity provider the brain federates human login to (Google is the reference; e.g. `https://accounts.google.com`). |
 | `BRAIN_AUTH_UPSTREAM_CLIENT_ID` | The brain's client ID registered at the upstream IdP. |
 | `BRAIN_AUTH_UPSTREAM_CLIENT_SECRET` | The brain's client secret at the upstream IdP. |
-| `BRAIN_AUTH_PRINCIPAL_TOKENS` | JSON object `{"<principal-id>": "<token>"}` for static (non-OAuth) callers — see the static principals recipe below. |
+| `BRAIN_AUTH_PRINCIPAL_TOKENS` | JSON object `{"<principal-id>": "<token>"}` for static (non-OAuth) callers — see the static principals recipe below. Only consulted when `BRAIN_POLICY_CREDENTIALS` is unset or `env` (the default) — see below. |
 
 `BRAIN_AUTH_ISSUER`, `_AUDIENCE`, and `_SIGNING_KEY` describe the brain's **own**
 authorization server. `BRAIN_AUTH_UPSTREAM_*` describes the **upstream** IdP the
@@ -62,6 +86,10 @@ upstream `id_token` and mints its own JWT.
 
 Use this when a caller is a program (an agent, a script, a service) rather than
 a human clicking through an OAuth consent screen — no browser flow required.
+This recipe covers the default `env` credential backend, where the secret
+lives in an environment variable; see
+[Agent-token credential backends](#agent-token-credential-backends-brain_policy_credentials)
+below for the Postgres-backed alternative, which adds instant revocation.
 
 1. In the brain's profile, declare a role and a static principal mapped to it:
 
@@ -117,6 +145,46 @@ add a parameter that changes what a token means.
 > deployment corollary of the virtual-principal decision: a principal's
 > restricted role means nothing if the same agent can also reach the
 > unauthenticated operator channel and bypass it entirely.
+
+## Agent-token credential backends (`BRAIN_POLICY_CREDENTIALS`)
+
+Static-principal bearer tokens (the recipe above) can be checked against
+either of two backends, selected by:
+
+```bash
+BRAIN_POLICY_CREDENTIALS=env       # default — BRAIN_AUTH_PRINCIPAL_TOKENS map
+BRAIN_POLICY_CREDENTIALS=postgres  # agent_tokens table; requires BRAIN_DATABASE_URL
+```
+
+| Variable | Meaning |
+|---|---|
+| `BRAIN_POLICY_CREDENTIALS` | `env` (default) or `postgres`. Any other value fails loud at provider construction. |
+| `BRAIN_DATABASE_URL` | Postgres DSN; **required** when `BRAIN_POLICY_CREDENTIALS=postgres` — the provider raises at construction time if it's unset, rather than silently falling back to `env`. |
+
+- **`env`** is the recipe above: one secret per principal, in
+  `BRAIN_AUTH_PRINCIPAL_TOKENS`, compared with a constant-time check. Rotating
+  or revoking a token means editing `.env` and restarting the process.
+- **`postgres`** stores only a SHA-256 hash of each token (`lib.credentials.PgCredentialStore`,
+  table `agent_tokens`) — the plaintext is never persisted, and is printed to
+  the operator exactly once, when `brain-admin token mint <pid>` creates it.
+  Because verification is a live table lookup on every request, revocation
+  (`brain-admin token revoke <pid>`) takes effect immediately, with no
+  restart and no waiting on a token's expiry. This backend needs the
+  `:full` image (or `pip install 'psycopg[binary,pool]'`) for the `psycopg`
+  driver — a plain `env`-backend brain has no such dependency.
+
+Minting, listing, and revoking tokens is a `brain-admin` job, not a manual
+SQL or `.env` edit — see
+[Administering policy: Token lifecycle](rbac.md#token-lifecycle-agent-credentials)
+in `docs/rbac.md`, and the
+[compose recipe](recipes/full-stack-compose.md) for a worked example that
+turns this backend on.
+
+Either backend only ever resolves the principal id a bearer token belongs
+to — the role that principal maps to still comes from
+`[auth.rbac.principals]` in the profile, same as the `env` backend. Switching
+`BRAIN_POLICY_CREDENTIALS` changes where the *secret* lives; it never changes
+where the *grant* lives (see [docs/rbac.md](rbac.md#the-git-truth-model)).
 
 ## OAuth / claude.ai custom-connector recipe
 

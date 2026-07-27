@@ -10,6 +10,7 @@ from contextvars import ContextVar
 
 from lib.config import Config
 from lib.auth import resolve_principal, AuthSettings, OWNER, ANONYMOUS
+from lib.policy import get_policy_provider
 from lib.brain import (
     _check_within_brain,
     _format_results,
@@ -34,6 +35,7 @@ _cfg = Config()
 # silently grant full visibility on any path the middleware didn't cover.
 current_principal: ContextVar = ContextVar("current_principal", default=ANONYMOUS)
 _auth_settings = AuthSettings.from_env()
+_policy = get_policy_provider(_cfg)
 
 
 def _brain_query_schema(profile):
@@ -379,14 +381,14 @@ def _build_http_app(server):
         return os.environ.get("BRAIN_AUTH_ISSUER", "")
 
     async def protected_resource(request):
-        if _cfg.load_profile().auth.mode != "oauth":
+        if _policy.get_auth_mode() != "oauth":
             return JSONResponse({"error": "not_found"}, status_code=404)
         return JSONResponse({"resource": os.environ.get("BRAIN_AUTH_AUDIENCE", ""),
                              "authorization_servers": [_issuer()],
                              "bearer_methods_supported": ["header"]})
 
     async def as_metadata(request):
-        if _cfg.load_profile().auth.mode != "oauth":
+        if _policy.get_auth_mode() != "oauth":
             return JSONResponse({"error": "not_found"}, status_code=404)
         i = _issuer()
         return JSONResponse({"issuer": i, "authorization_endpoint": f"{i}/authorize",
@@ -398,8 +400,7 @@ def _build_http_app(server):
         async def dispatch(self, request, call_next):
             if request.url.path.startswith("/.well-known/"):
                 return await call_next(request)
-            profile = _cfg.load_profile()
-            principal = resolve_principal(_bearer(request.headers), profile, _auth_settings)
+            principal = resolve_principal(_bearer(request.headers), _policy, _auth_settings)
             if principal is None:
                 meta = f"{_issuer()}/.well-known/oauth-protected-resource"
                 return JSONResponse({"error": "unauthorized"}, status_code=401,
