@@ -11,6 +11,7 @@ from contextvars import ContextVar
 from lib.config import Config
 from lib.auth import resolve_principal, AuthSettings, OWNER, ANONYMOUS
 from lib.policy import get_policy_provider
+from lib.retrieval_log import check_retrieval_log_config
 from lib.brain import (
     _check_within_brain,
     _format_results,
@@ -36,6 +37,7 @@ _cfg = Config()
 current_principal: ContextVar = ContextVar("current_principal", default=ANONYMOUS)
 _auth_settings = AuthSettings.from_env()
 _policy = get_policy_provider(_cfg)
+check_retrieval_log_config()
 
 
 def _brain_query_schema(profile):

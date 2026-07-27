@@ -24,6 +24,11 @@ reaches its end state. See the [Roadmap](README.md#roadmap).
 - `BRAIN_AUTH_MODE` env override — one profile repo can serve an
   owner-only local instance and an oauth+RBAC deployment.
 - Policy hot-reload: rbac changes apply without restart.
+- Per-principal retrieval log (`BRAIN_RETRIEVAL_LOG=postgres`): append-only
+  record of every note surfaced to each principal (plus writes and admin
+  actions) in the full-stack tier's Postgres. Best-effort + loud — a log
+  outage never blocks retrieval. Query via `GET /api/admin/retrievals` or
+  `brain-admin log query`.
 
 ### Deprecated
 - The `:ui` image is no longer published. Build your own thin layer —

@@ -14,6 +14,7 @@ from lib.config import Config
 from lib.clean import extract_frontmatter
 from lib.auth import OWNER
 from lib.visibility import visible, can_write, can_write_transition
+from lib.retrieval_log import safe_log_reads, safe_log_write
 from lib.edit import (
     append_to_section,
     find_replace,
@@ -188,6 +189,8 @@ def handle_brain_search(query: str, limit: int, db_path: str, *,
         results = store.search(embedding, k=limit, allowed_layers=principal.read_layers)
     else:
         results = _paginated_visible_search(store, embedding, limit, principal, fields)
+    safe_log_reads(principal, "brain_search", query,
+                   list(dict.fromkeys(r["filepath"] for r in results)))
     return _format_results(results)
 
 
@@ -223,11 +226,13 @@ def handle_brain_related(filepath: str, limit: int, db_path: str, brain_path: st
             deduped.append(r)
             if len(deduped) == limit:
                 break
+        safe_log_reads(principal, "brain_related", filepath, [r["filepath"] for r in deduped])
         return _format_results(deduped)
     deduped = _paginated_visible_search(
         store, mean_vec, limit, principal, fields,
         exclude=exclude, initial_k=limit * _CANDIDATE_MULTIPLIER,
     )
+    safe_log_reads(principal, "brain_related", filepath, [r["filepath"] for r in deduped])
     return _format_results(deduped)
 
 
@@ -405,6 +410,7 @@ def handle_brain_query(
 
         if not files:
             return _no_match_hint(all_filters, brain_path, principal=principal, fields=field_specs)
+        safe_log_reads(principal, "brain_query", f"tag={tag} filters={sorted(all_filters)}", files)
         return "\n".join(sorted(files))
 
     # tag-only query: use zk with index refresh. Only unrestricted (owner /
@@ -446,6 +452,7 @@ def handle_brain_query(
         files = visible_files
     if not files:
         return "No notes matched the query."
+    safe_log_reads(principal, "brain_query", f"tag={tag} filters={sorted(all_filters)}", files)
     return "\n".join(files)
 
 
@@ -474,6 +481,7 @@ def handle_brain_write(filepath: str, content: str, brain_path: str, *,
     try:
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
+        safe_log_write(principal, "write", filepath)
         return f"Written: {full_path}"
     except Exception as e:
         return f"Error writing {filepath}: {e}"
@@ -498,6 +506,7 @@ def handle_brain_read(filepath: str, brain_path: str, *,
         # forbidden note is byte-for-byte indistinguishable from an absent one —
         # even across two DIFFERENT requested paths, not just the same one.
         return "File not found"
+    safe_log_reads(principal, "brain_read", filepath, [filepath])
     return content
 
 
@@ -570,7 +579,9 @@ def handle_brain_create(
     if result.returncode != 0:
         available = handle_brain_templates(brain_path)
         return f"zk new failed: {result.stderr.strip()}\n\n{available}"
-    return result.stdout.strip()
+    created = result.stdout.strip()
+    safe_log_write(principal, "create", created, subject=f"template={template}")
+    return created
 
 
 def handle_brain_edit(filepath: str, op: str, brain_path: str, *,
@@ -670,6 +681,7 @@ def handle_brain_edit(filepath: str, op: str, brain_path: str, *,
             f.write(candidate)
     except Exception as e:
         return f"Error writing {filepath}: {e}"
+    safe_log_write(principal, "edit", filepath, subject=detail)
     return detail
 
 
@@ -694,6 +706,7 @@ def handle_brain_backlinks(filepath: str, brain_path: str, *,
             if visible(meta, principal, fields):
                 visible_results.append(r)
         results = visible_results
+    safe_log_reads(principal, "brain_backlinks", filepath, [r["filepath"] for r in results])
     if not results:
         return "No backlinks found."
     lines = [f"- **{r['title']}** ({r['filepath']})" for r in results]
@@ -766,6 +779,7 @@ def handle_brain_trash(filepath: str, brain_path: str, db_path: str, *,
     else:
         bl_msg = "No backlinks."
 
+    safe_log_write(principal, "trash", rel, subject=trash_rel)
     return (
         f"Trashed {rel}. {bl_msg} "
         f"Restore with brain_restore('{trash_rel}')."
@@ -824,6 +838,7 @@ def handle_brain_restore(trash_path: str, brain_path: str, *,
     if os.path.isfile(origin_sidecar):
         os.remove(origin_sidecar)
 
+    safe_log_write(principal, "restore", original_rel)
     return (
         f"Restored {original_rel}. "
         f"The file watcher will re-index it shortly."

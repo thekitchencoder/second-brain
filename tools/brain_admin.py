@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from urllib.parse import urlencode
 
 import httpx
 
@@ -32,6 +33,15 @@ sys.path.insert(0, _SCRIPT_DIR)
 
 from lib.config import Config  # noqa: E402
 from lib.policy_edit import PolicyEditError  # noqa: E402
+from lib import retrieval_log  # noqa: E402
+from lib.retrieval_log import safe_log_admin  # noqa: E402
+
+# The local transport is the docker-exec recovery path (see module docstring
+# above) — there is no resolved OAuth/bearer principal to attribute a
+# mutation to here, only whatever trust comes from having a shell inside the
+# container. Every admin-log row written from this transport is attributed
+# to this fixed sentinel rather than a real principal id.
+_LOCAL_ADMIN_PRINCIPAL = "local-admin"
 
 
 def _rbac_dict(rbac):
@@ -87,27 +97,49 @@ class LocalTransport:
     def principal_list(self):
         return {"principals": _rbac_dict(self._provider().get_rbac())["principals"]}
 
-    # mutations — all return {"commit": sha}
+    # mutations — all return {"commit": sha}; each logs post-success under
+    # the local-admin sentinel, mirroring brain_api._admin_edit's subjects.
     def role_set(self, name, read, write, admin=False):
-        return {"commit": self._editor().role_set(name, read, write, admin=admin)}
+        sha = self._editor().role_set(name, read, write, admin=admin)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"role_set {name} ({sha[:7]})")
+        return {"commit": sha}
 
     def role_rm(self, name):
-        return {"commit": self._editor().role_rm(name)}
+        sha = self._editor().role_rm(name)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"role_rm {name} ({sha[:7]})")
+        return {"commit": sha}
 
     def identity_map(self, subject, role):
-        return {"commit": self._editor().identity_map(subject, role)}
+        sha = self._editor().identity_map(subject, role)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"identity_map {subject} -> {role} ({sha[:7]})")
+        return {"commit": sha}
 
     def identity_unmap(self, subject):
-        return {"commit": self._editor().identity_unmap(subject)}
+        sha = self._editor().identity_unmap(subject)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"identity_unmap {subject} ({sha[:7]})")
+        return {"commit": sha}
 
     def principal_set(self, pid, role):
-        return {"commit": self._editor().principal_set(pid, role)}
+        sha = self._editor().principal_set(pid, role)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"principal_set {pid} -> {role} ({sha[:7]})")
+        return {"commit": sha}
 
     def principal_rm(self, pid):
-        return {"commit": self._editor().principal_rm(pid)}
+        sha = self._editor().principal_rm(pid)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"principal_rm {pid} ({sha[:7]})")
+        return {"commit": sha}
 
     def default_role_set(self, role):
-        return {"commit": self._editor().default_role_set(role)}
+        sha = self._editor().default_role_set(role)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "policy_edit",
+                       f"default_role_set {role} ({sha[:7]})")
+        return {"commit": sha}
 
     # tokens
     def token_mint(self, pid):
@@ -115,13 +147,33 @@ class LocalTransport:
         if pid not in (_rbac_dict(rbac)["principals"]):
             raise PolicyEditError(
                 f"unknown principal: {pid} — add it first (principal set {pid} ROLE)")
-        return {"principal_id": pid, "token": self._credential_store().mint(pid)}
+        token = self._credential_store().mint(pid)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "token_mint", pid)
+        return {"principal_id": pid, "token": token}
 
     def token_revoke(self, pid):
-        return {"principal_id": pid, "revoked": self._credential_store().revoke(pid)}
+        revoked = self._credential_store().revoke(pid)
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "token_revoke", pid)
+        return {"principal_id": pid, "revoked": revoked}
 
     def token_list(self):
-        return {"tokens": self._credential_store().list_tokens()}
+        tokens = self._credential_store().list_tokens()
+        safe_log_admin(_LOCAL_ADMIN_PRINCIPAL, "token_list", f"{len(tokens)} tokens")
+        return {"tokens": tokens}
+
+    # retrieval log — reading it is NOT itself logged as an admin event
+    # (no safe_log_admin equivalent here); see brain_api.admin_retrievals.
+    def log_query(self, principal=None, kind=None, tool=None, since=None,
+                  until=None, path=None, limit=100):
+        if not retrieval_log.enabled():
+            raise RuntimeError("Retrieval log requires BRAIN_RETRIEVAL_LOG=postgres")
+        if not self.cfg.database_url:
+            raise RuntimeError(
+                "BRAIN_RETRIEVAL_LOG=postgres requires BRAIN_DATABASE_URL")
+        log = retrieval_log.get_retrieval_log(self.cfg.database_url)
+        return {"entries": log.query(principal=principal, kind=kind, tool=tool,
+                                     since=since, until=until, path=path,
+                                     limit=limit)}
 
 
 # ── Remote transport ────────────────────────────────────────────────────
@@ -208,6 +260,18 @@ class RemoteTransport:
     def token_list(self):
         return self._request("GET", "/api/admin/tokens")
 
+    # retrieval log
+    def log_query(self, principal=None, kind=None, tool=None, since=None,
+                  until=None, path=None, limit=100):
+        filters = {
+            "principal": principal, "kind": kind, "tool": tool,
+            "since": since, "until": until, "path": path, "limit": limit,
+        }
+        params = {k: v for k, v in filters.items() if v is not None}
+        qs = urlencode(params)
+        path_and_qs = "/api/admin/retrievals" + (f"?{qs}" if qs else "")
+        return self._request("GET", path_and_qs)
+
 
 # ── Output formatting ───────────────────────────────────────────────────
 
@@ -267,6 +331,18 @@ def _print_token_list(result):
         status = "revoked" if t.get("revoked_at") else "active"
         print(f"{t['principal_id']}  {status}  "
               f"created={t.get('created_at')}  revoked={t.get('revoked_at')}")
+
+
+def _print_retrievals(result):
+    entries = result.get("entries") or []
+    if not entries:
+        print("(no entries)")
+        return
+    # Already ts-desc from PgRetrievalLog.query — print in that order.
+    for e in entries:
+        kind = e.get("kind") or ""
+        print(f"{e.get('ts')}  {e.get('principal_id')}  {kind:<6}  "
+              f"{e.get('tool')}  {e.get('filepath') or ''}  {e.get('subject') or ''}")
 
 
 # ── argparse ─────────────────────────────────────────────────────────────
@@ -336,6 +412,18 @@ def build_parser() -> argparse.ArgumentParser:
     drset = default_role_sub.add_parser("set", help="Set the default role")
     drset.add_argument("role", help="Role name")
 
+    log = sub.add_parser("log", help="Query the per-principal retrieval/audit log")
+    log_sub = log.add_subparsers(dest="log_cmd", required=True)
+    lquery = log_sub.add_parser(
+        "query", help="Query the retrieval log (requires BRAIN_RETRIEVAL_LOG=postgres)")
+    lquery.add_argument("--principal", default=None, help="Filter by principal id")
+    lquery.add_argument("--kind", default=None, help="Filter by kind (read/write/admin)")
+    lquery.add_argument("--tool", default=None, help="Filter by tool name")
+    lquery.add_argument("--since", default=None, help="Only entries at/after this timestamp")
+    lquery.add_argument("--until", default=None, help="Only entries before this timestamp")
+    lquery.add_argument("--path", default=None, help="Filter by filepath substring")
+    lquery.add_argument("--limit", type=int, default=100, help="Max rows to return (default 100)")
+
     return p
 
 
@@ -380,6 +468,11 @@ def _dispatch(args, t):
     if cmd == "default-role":
         if args.default_role_cmd == "set":
             return t.default_role_set(args.role), _print_commit
+    if cmd == "log":
+        if args.log_cmd == "query":
+            return t.log_query(principal=args.principal, kind=args.kind, tool=args.tool,
+                               since=args.since, until=args.until, path=args.path,
+                               limit=args.limit), _print_retrievals
     raise AssertionError(f"unhandled command: {cmd} {vars(args)}")
 
 

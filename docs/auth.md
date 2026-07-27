@@ -186,6 +186,25 @@ to — the role that principal maps to still comes from
 `BRAIN_POLICY_CREDENTIALS` changes where the *secret* lives; it never changes
 where the *grant* lives (see [docs/rbac.md](rbac.md#the-git-truth-model)).
 
+## The retrieval log (`BRAIN_RETRIEVAL_LOG`)
+
+Unlike everything else on this page, the retrieval log is not gated on
+`profile.auth.mode` — it's read regardless of auth mode, since even a
+`mode = "none"` (owner-only) instance may want a record of what got surfaced:
+
+```bash
+BRAIN_RETRIEVAL_LOG=off       # default — no store is ever constructed
+BRAIN_RETRIEVAL_LOG=postgres  # append-only log; requires BRAIN_DATABASE_URL
+```
+
+| Variable | Meaning |
+|---|---|
+| `BRAIN_RETRIEVAL_LOG` | `off` (default) or `postgres`. Any other value fails loud at server startup (`check_retrieval_log_config`), never mid-request. |
+| `BRAIN_DATABASE_URL` | Postgres DSN; **required** when `BRAIN_RETRIEVAL_LOG=postgres` — same variable the pgvector store and Postgres credential backend use, all sharing one Postgres instance in the full-stack tier. |
+
+See [docs/rbac.md: The retrieval log](rbac.md#the-retrieval-log) for what
+gets recorded, the best-effort/loud semantics, and how to query it.
+
 ## OAuth / claude.ai custom-connector recipe
 
 Use this when a human needs to log in from claude.ai (web or mobile) or another

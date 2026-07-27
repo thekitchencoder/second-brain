@@ -393,3 +393,61 @@ def test_is_admin_non_dict_role_spec_fails_closed(monkeypatch, tmp_path):
     client = TestClient(api.app)
     r = client.get("/api/admin/policy", headers={"Authorization": "Bearer ghost-secret"})
     assert r.status_code == 404
+
+
+# ── Retrieval log query surface (slice 3) ──────────────────────────────
+# Reading the log is deliberately NOT itself logged as an admin event —
+# see the comment above admin_retrievals in brain_api.py.
+
+
+def _retrieval_log_client(monkeypatch, tmp_path):
+    monkeypatch.setenv("BRAIN_RETRIEVAL_LOG", "postgres")
+    monkeypatch.setenv("BRAIN_DATABASE_URL", "postgresql://x/y")
+    return _oauth_client(monkeypatch, tmp_path)
+
+
+def test_retrievals_route_passes_filters(monkeypatch, tmp_path):
+    api, client = _retrieval_log_client(monkeypatch, tmp_path)
+    fake_log = MagicMock()
+    fake_log.query.return_value = [
+        {"ts": "2026-01-01T00:00:00+00:00", "principal_id": "x", "kind": "read",
+         "tool": "brain_search", "subject": None, "filepath": "a/b.md", "request_id": None},
+    ]
+    import lib.retrieval_log as retrieval_log
+    monkeypatch.setattr(retrieval_log, "get_retrieval_log", lambda dsn: fake_log)
+    r = client.get("/api/admin/retrievals", params={
+        "principal": "x", "kind": "read", "tool": "brain_search",
+        "since": "2026-01-01", "until": "2026-12-31", "path": "a", "limit": 5,
+    }, headers=ADMIN_AUTH)
+    assert r.status_code == 200
+    assert r.json() == {"entries": fake_log.query.return_value}
+    fake_log.query.assert_called_once_with(
+        principal="x", kind="read", tool="brain_search",
+        since="2026-01-01", until="2026-12-31", path="a", limit=5)
+
+
+def test_retrievals_route_404_for_non_admin(monkeypatch, tmp_path):
+    _api, client = _retrieval_log_client(monkeypatch, tmp_path)
+    r = client.get("/api/admin/retrievals", headers=NON_ADMIN_AUTH)
+    assert r.status_code == 404
+
+
+def test_retrievals_route_503_when_log_off(monkeypatch, tmp_path):
+    monkeypatch.delenv("BRAIN_RETRIEVAL_LOG", raising=False)
+    _api, client = _oauth_client(monkeypatch, tmp_path)
+    r = client.get("/api/admin/retrievals", headers=ADMIN_AUTH)
+    assert r.status_code == 503
+    assert "BRAIN_RETRIEVAL_LOG=postgres" in r.json()["detail"]
+
+
+def test_retrievals_route_does_not_log_itself_as_admin_event(monkeypatch, tmp_path):
+    api, client = _retrieval_log_client(monkeypatch, tmp_path)
+    fake_log = MagicMock()
+    fake_log.query.return_value = []
+    import lib.retrieval_log as retrieval_log
+    monkeypatch.setattr(retrieval_log, "get_retrieval_log", lambda dsn: fake_log)
+    calls = []
+    monkeypatch.setattr(api, "safe_log_admin", lambda *a, **kw: calls.append((a, kw)))
+    r = client.get("/api/admin/retrievals", headers=ADMIN_AUTH)
+    assert r.status_code == 200
+    assert calls == []

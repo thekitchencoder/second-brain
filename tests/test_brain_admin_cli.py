@@ -124,6 +124,52 @@ def test_default_role_set_local(tmp_profile_repo):
     assert _toml(tmp_profile_repo)["auth"]["rbac"]["default_role"] == "owner"
 
 
+# ── local transport: admin log wiring (slice 3) ─────────────────────────
+
+def test_local_role_set_logs_admin_row(tmp_profile_repo, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(brain_admin, "safe_log_admin",
+                        lambda *a: calls.append(a))
+    rc = brain_admin.main(["role", "set", "maker", "--read", "*", "--write", "*"])
+    sha = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert len(calls) == 1
+    principal, tool, subj = calls[0]
+    assert principal == "local-admin"
+    assert tool == "policy_edit"
+    assert sha[:7] in subj
+
+
+def test_local_token_mint_logs_pid_never_token(tmp_profile_repo, monkeypatch):
+    monkeypatch.setenv("BRAIN_POLICY_CREDENTIALS", "postgres")
+    monkeypatch.setenv("BRAIN_DATABASE_URL", "postgresql://x/y")
+    fake_store = MagicMock()
+    fake_store.mint.return_value = "plaintext-token-xyz"
+    monkeypatch.setattr(brain_admin.LocalTransport, "_credential_store",
+                        lambda self: fake_store)
+    calls = []
+    monkeypatch.setattr(brain_admin, "safe_log_admin",
+                        lambda *a: calls.append(a))
+    rc = brain_admin.main(["token", "mint", "fenn-desk"])
+    assert rc == 0
+    assert calls == [("local-admin", "token_mint", "fenn-desk")]
+    assert not any("plaintext-token-xyz" in str(arg)
+                  for call in calls for arg in call)
+
+
+def test_local_mutations_flag_off_no_log_calls_into_store(tmp_profile_repo, monkeypatch):
+    # BRAIN_RETRIEVAL_LOG left unset by the fixture — safe_log_admin must
+    # short-circuit before ever touching the retrieval-log store, so a
+    # local mutation succeeds even if the store would blow up if reached.
+    def _boom(dsn):
+        raise AssertionError("get_retrieval_log should not be called when flag is off")
+    monkeypatch.setattr(brain_admin.retrieval_log, "get_retrieval_log", _boom)
+    rc = brain_admin.main(["role", "set", "maker", "--read", "*", "--write", "*"])
+    assert rc == 0
+    spec = _toml(tmp_profile_repo)["auth"]["rbac"]["roles"]["maker"]
+    assert spec["read"] == ["*"] and spec["write"] == ["*"]
+
+
 # ── local transport: reads ──────────────────────────────────────────────
 
 def test_policy_show_renders_rbac(tmp_profile_repo, capsys):
@@ -357,6 +403,85 @@ def test_url_without_token_is_infra_error(capsys):
     err = capsys.readouterr().err
     assert rc == 1
     assert "--token" in err
+
+
+# ── log query (local, PgRetrievalLog mocked) ────────────────────────────
+# Reading the log is deliberately not itself an admin-logged event — no
+# assertion needed here, there's simply no safe_log_admin call in the path.
+
+
+def test_log_query_local_passes_filters(tmp_profile_repo, monkeypatch, capsys):
+    monkeypatch.setenv("BRAIN_RETRIEVAL_LOG", "postgres")
+    monkeypatch.setenv("BRAIN_DATABASE_URL", "postgresql://x/y")
+    fake_log = MagicMock()
+    fake_log.query.return_value = [
+        {"ts": "2026-01-01T00:00:00+00:00", "principal_id": "x", "kind": "read",
+         "tool": "brain_search", "subject": None, "filepath": "a/b.md", "request_id": None},
+    ]
+    monkeypatch.setattr(brain_admin.retrieval_log, "get_retrieval_log", lambda dsn: fake_log)
+    rc = brain_admin.main(["log", "query", "--principal", "x", "--kind", "read",
+                           "--tool", "brain_search", "--since", "2026-01-01",
+                           "--until", "2026-12-31", "--path", "a", "--limit", "5"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    fake_log.query.assert_called_once_with(
+        principal="x", kind="read", tool="brain_search",
+        since="2026-01-01", until="2026-12-31", path="a", limit=5)
+    assert "brain_search" in out and "a/b.md" in out
+
+
+def test_log_query_local_defaults_all_filters_none(tmp_profile_repo, monkeypatch, capsys):
+    monkeypatch.setenv("BRAIN_RETRIEVAL_LOG", "postgres")
+    monkeypatch.setenv("BRAIN_DATABASE_URL", "postgresql://x/y")
+    fake_log = MagicMock()
+    fake_log.query.return_value = []
+    monkeypatch.setattr(brain_admin.retrieval_log, "get_retrieval_log", lambda dsn: fake_log)
+    rc = brain_admin.main(["log", "query"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    fake_log.query.assert_called_once_with(
+        principal=None, kind=None, tool=None, since=None, until=None, path=None, limit=100)
+    assert "no entries" in out.lower()
+
+
+def test_log_query_local_off_fails_actionably(tmp_profile_repo, capsys):
+    # BRAIN_RETRIEVAL_LOG left unset by the fixture.
+    rc = brain_admin.main(["log", "query"])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "BRAIN_RETRIEVAL_LOG=postgres" in err
+
+
+# ── log query (remote) ──────────────────────────────────────────────────
+
+
+def test_remote_transport_log_query(monkeypatch, capsys):
+    calls = []
+    payload = {"entries": [
+        {"ts": "2026-01-01T00:00:00+00:00", "principal_id": "x", "kind": "read",
+         "tool": "brain_search", "subject": None, "filepath": "a/b.md", "request_id": None},
+    ]}
+    fake_client = _FakeClient(calls, _FakeResponse(200, payload))
+    monkeypatch.setattr(brain_admin.httpx, "Client", lambda *a, **kw: fake_client)
+    rc = brain_admin.main(["--url", "http://x", "--token", "t", "log", "query",
+                           "--principal", "x", "--kind", "read", "--tool", "brain_search",
+                           "--since", "2026-01-01", "--until", "2026-12-31",
+                           "--path", "a", "--limit", "5"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert calls == [("GET",
+                      "/api/admin/retrievals?principal=x&kind=read&tool=brain_search&"
+                      "since=2026-01-01&until=2026-12-31&path=a&limit=5", None)]
+    assert "brain_search" in out and "a/b.md" in out
+
+
+def test_remote_transport_log_query_only_sends_non_none_filters(monkeypatch, capsys):
+    calls = []
+    fake_client = _FakeClient(calls, _FakeResponse(200, {"entries": []}))
+    monkeypatch.setattr(brain_admin.httpx, "Client", lambda *a, **kw: fake_client)
+    rc = brain_admin.main(["--url", "http://x", "--token", "t", "log", "query"])
+    assert rc == 0
+    assert calls == [("GET", "/api/admin/retrievals?limit=100", None)]
 
 
 # ── argparse plumbing ────────────────────────────────────────────────────

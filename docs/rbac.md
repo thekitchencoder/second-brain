@@ -290,20 +290,61 @@ returns the identical `404`. A non-admin principal cannot learn that
 gets back; `brain-admin`'s remote transport surfaces all of these uniformly
 as "not found or not authorized" rather than distinguishing them.
 
-## Deferred: retrieval audit log
+## The retrieval log
 
-Managing roles, principals, and layer assignments without hand-editing
-`profile.toml` and `.env` is **no longer deferred** — see
-[Administering policy](#administering-policy) above.
+Alongside the git-commit audit trail for policy *mutations* (see
+[The git-truth model](#the-git-truth-model) above), there is a separate,
+append-only log of what the archive actually *showed* each principal:
+`BRAIN_RETRIEVAL_LOG=postgres` records one row per note surfaced by a read
+(`brain_search`, `brain_related`, `brain_read`, `brain_query`,
+`brain_backlinks` and their REST equivalents), one row per successful write
+(`write`/`edit`/`create`/`trash`/`restore`), and one row per admin action
+(`policy_edit`, `token_mint`, `token_revoke`, `token_list`) — including from
+`brain-admin`'s local transport, which has no resolved principal to
+attribute to and so logs under the fixed `local-admin` id. Grain is
+deliberately fine: a search that surfaces three notes logs three rows, not
+one row for the query — so "which principals have seen note X" is a single
+`filepath` filter away, not a query-text guess.
 
-What remains explicitly out of scope for this build is **a retrieval/audit
-log** — a record of which principal read or was denied which note, for
-after-the-fact review. `lib/visibility.py` names the single choke point
-(`visible()`/`can_write()`) where such a hook belongs, precisely so it can be
-added later without re-threading the call sites — but no logging is wired up
-here. (Policy *mutations* already have their own audit trail: every admin
-write is a git commit, visible in `git log` on the profile repo — see
-[The git-truth model](#the-git-truth-model) above.)
+This is **not** a hook on `visible()`/`can_write()` themselves — those stay
+pure predicates with no side effect (see the note at the top of
+`lib/visibility.py`). The log hooks in at the handler/route result boundary
+in `tools/lib/brain.py` and `tools/brain_api.py` instead, firing only
+**after** a result is known — a forbidden note is never logged, because it
+never reaches the point in the code where the hook fires, and neither is a
+request that erred out before producing a result. The oracle-safety
+guarantee above extends to the log itself: a restricted principal's read
+history contains exactly what it was shown, nothing it was denied, and
+nothing about a note it never asked about.
+
+**Best-effort, and loud about it.** A log write that fails (Postgres down,
+network blip) prints a warning to stderr and the request completes exactly
+as it would have otherwise — the log is observational history, not a second
+enforcement gate. `BRAIN_RETRIEVAL_LOG` unset (or `off`, the default) means
+the hooks are a single env-var check per call and never construct a store —
+see [Backward compatibility](#backward-compatibility) for the same
+zero-cost-when-off shape RBAC itself follows.
+
+Query it via `GET /api/admin/retrievals` (owner-gated, same 404 discipline as
+the rest of the [admin plane](#the-404-oracle-extended-to-the-admin-plane))
+or the CLI:
+
+```bash
+brain-admin log query --principal fenn-desk
+brain-admin log query --kind admin --since 2026-07-01
+```
+
+Both accept `--principal`, `--kind` (`read`/`write`/`admin`), `--tool`,
+`--since`/`--until`, `--path` (filepath substring), and `--limit`. This needs
+the same Postgres the pgvector store and Postgres credential backend use —
+see [docs/auth.md: BRAIN_RETRIEVAL_LOG](auth.md#the-retrieval-log-brain_retrieval_log)
+for the env var and [the compose recipe](recipes/full-stack-compose.md) for
+a worked example.
+
+`tests/test_retrieval_hooks.py` locks the hook sites (both surfaces, plus
+"never on a forbidden or errored path"); `tests/test_retrieval_log_e2e.py`
+is the acceptance story end to end — a restricted search, a write, and an
+admin edit, each producing exactly the rows they should and nothing else.
 
 ## Backward compatibility
 
@@ -343,8 +384,13 @@ turning on `[auth.rbac]` so `layer` is populated before you rely on it.
   every role/identity/principal change is a git commit.
 - `tools/brain_admin.py` — the `brain-admin` CLI (local + remote transports)
   documented in [Administering policy](#administering-policy) above.
+- `tools/lib/retrieval_log.py` (`PgRetrievalLog`, `safe_log_*`) — the
+  append-only per-principal log described in
+  [The retrieval log](#the-retrieval-log) above.
 - `tests/test_visibility_enforcement.py` — end-to-end enforcement tests across
   both the shared `handle_brain_*` handlers and the REST routes in
   `tools/brain_api.py`, plus the anti-drift signature checks that fail CI if a
   future content handler or REST route is added without the gate.
 - `tests/test_ace_backward_compat.py` — the inertness proof summarized above.
+- `tests/test_retrieval_hooks.py`, `tests/test_retrieval_log_e2e.py` — the
+  retrieval log's hook-site coverage and end-to-end acceptance story.

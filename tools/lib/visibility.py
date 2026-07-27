@@ -6,8 +6,11 @@ wall (read_layers/write_layers) then fine allow/deny fields matched on the
 caller's role. mode=none / owner (layers ("*",)) short-circuit to allow, so
 non-RBAC brains pay nothing.
 
-NOTE (deferred): the per-principal retrieval/audit log hooks in HERE, at the
-single choke point, once the RBAC-tier store exists. Do not add it in Plan E.
+NOTE: the per-principal retrieval/audit log (slice 3) does NOT hook in here.
+It lands at the handler/route result boundaries in lib/brain.py and
+brain_api.py (post-filter, post-success) plus the admin plane in
+brain_api.py — this predicate stays pure, with no logging side effect of
+its own.
 """
 from __future__ import annotations
 

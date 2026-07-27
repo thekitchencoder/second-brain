@@ -38,6 +38,7 @@ services:
       BRAIN_VECTOR_STORE: pgvector
       BRAIN_DATABASE_URL: postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
       BRAIN_POLICY_CREDENTIALS: postgres
+      BRAIN_RETRIEVAL_LOG: postgres
 
 volumes:
   pgdata:
@@ -74,3 +75,16 @@ Give that token to the agent as a standard bearer credential
 transport. See [docs/rbac.md](../rbac.md#administering-policy) for the full
 `brain-admin` reference, including remote (non-`docker exec`) usage and
 revocation.
+
+## Querying the retrieval log
+
+`BRAIN_RETRIEVAL_LOG: postgres` above turns on the append-only per-principal
+retrieval/audit log — one row per note surfaced, per write, and per admin
+action — in the same Postgres instance. See
+[docs/rbac.md: The retrieval log](../rbac.md#the-retrieval-log) for what gets
+recorded and [docs/auth.md](../auth.md#the-retrieval-log-brain_retrieval_log)
+for the env var. Query it via `brain-admin`:
+
+```bash
+docker compose exec brain brain-admin log query --principal fenn-desk
+```

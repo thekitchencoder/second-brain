@@ -22,6 +22,12 @@ from pydantic import BaseModel, Field
 from lib.auth import resolve_principal, AuthSettings, Principal
 from lib.config import Config
 from lib.policy import get_policy_provider
+from lib.retrieval_log import (
+    check_retrieval_log_config,
+    safe_log_admin,
+    safe_log_reads,
+    safe_log_write,
+)
 from lib.oauth_server import (
     AuthState,
     ClientStore,
@@ -63,6 +69,7 @@ from lib.brain import (
 _cfg = Config()
 _auth_settings = AuthSettings.from_env()
 _policy = get_policy_provider(_cfg)
+check_retrieval_log_config()
 _client_store = ClientStore(os.path.join(_cfg.brain_path, ".ai", "oauth-clients.json"))
 _auth_state = AuthState()
 _refresh_store = RefreshStore(os.path.join(_cfg.brain_path, ".ai", "oauth-refresh.json"))
@@ -530,6 +537,8 @@ def search_notes(
     else:
         fields = _cfg.load_profile().fields
         results = _paginated_visible_search(store, embedding, limit, principal, fields)
+    safe_log_reads(principal, "brain_search", q,
+                   list(dict.fromkeys(r["filepath"] for r in results)))
     return [
         SearchResult(
             filepath=r["filepath"],
@@ -619,6 +628,7 @@ def related_notes(filepath: str, limit: int = Query(5, ge=1, le=50),
         raw_results = _paginated_visible_search(store, mean_vec, limit,
                                                 principal, fields,
                                                 exclude=exclude, initial_k=limit * 10)
+    safe_log_reads(principal, "brain_related", filepath, [r["filepath"] for r in raw_results])
     return [
         SearchResult(
             filepath=r["filepath"],
@@ -646,6 +656,7 @@ def get_backlinks(filepath: str, principal: Principal = Depends(require_principa
             if visible(_meta_for_path(os.path.join(_cfg.brain_path, r["filepath"])),
                       principal, fields)
         ]
+    safe_log_reads(principal, "brain_backlinks", filepath, [r["filepath"] for r in results])
     return results
 
 
@@ -662,7 +673,9 @@ def read_note(filepath: str, principal: Principal = Depends(require_principal)):
             # in _read_file above — a forbidden note is indistinguishable from
             # a missing one.
             raise HTTPException(status_code=404, detail=f"File not found: {full}")
-    return _parse_note(_relative(full), raw)
+    rel = _relative(full)
+    safe_log_reads(principal, "brain_read", rel, [rel])
+    return _parse_note(rel, raw)
 
 
 @app.put("/api/notes/{filepath:path}", response_model=EditResponse)
@@ -684,6 +697,7 @@ def write_note(filepath: str, req: WriteRequest, principal: Principal = Depends(
     if not _principal_write_unrestricted(principal) and not can_write_transition(old_meta, new_meta, principal):
         raise HTTPException(status_code=403, detail=f"Not authorized to write {filepath}")
     _write_file(full, req.content)
+    safe_log_write(principal, "write", _relative(full))
     return EditResponse(filepath=_relative(full), success=True, detail="File written")
 
 
@@ -765,6 +779,7 @@ def edit_note(filepath: str, req: EditRequest, principal: Principal = Depends(re
         raise HTTPException(status_code=403, detail=f"Not authorized to write {filepath}")
 
     _write_file(full, candidate)
+    safe_log_write(principal, "edit", _relative(full), subject=detail)
     return EditResponse(filepath=_relative(full), success=True, detail=detail)
 
 
@@ -830,10 +845,10 @@ def list_templates(principal: Principal = Depends(require_principal)):
     return _list_template_names(brain_path=_cfg.brain_path)
 
 
-# ── Admin plane (slice 2) ────────────────────────────────────────────
+# ── Admin plane (slice 2, audit-logged in slice 3) ────────────────────
 # Policy truth is the profile repo: every mutation below delegates to
 # PolicyEditor (a git commit) or PgCredentialStore (credentials only).
-# Slice 3's audit log hooks in at these mutation points.
+# safe_log_admin fires post-success in _admin_edit and the token routes below.
 
 
 def _is_admin(principal: Principal) -> bool:
@@ -869,13 +884,14 @@ def _credentials():
     return get_credential_store(_cfg.database_url)
 
 
-def _admin_edit(op):
+def _admin_edit(principal: Principal, description: str, op):
     from lib.policy_edit import PolicyEditError
     try:
         sha = op(_editor())
     except PolicyEditError as e:
         raise HTTPException(400, str(e))
     _policy.invalidate()
+    safe_log_admin(principal, "policy_edit", f"{description} ({sha[:7]})")
     return {"commit": sha}
 
 
@@ -906,36 +922,39 @@ def admin_policy(principal: Principal = Depends(_require_admin)):
 @app.put("/api/admin/roles/{name}")
 def admin_role_set(name: str, spec: RoleSpec,
                    principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.role_set(name, spec.read, spec.write, spec.admin))
+    return _admin_edit(principal, f"role_set {name}",
+                       lambda ed: ed.role_set(name, spec.read, spec.write, spec.admin))
 
 
 @app.delete("/api/admin/roles/{name}")
 def admin_role_rm(name: str, principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.role_rm(name))
+    return _admin_edit(principal, f"role_rm {name}", lambda ed: ed.role_rm(name))
 
 
 @app.put("/api/admin/identities/{subject}")
 def admin_identity_map(subject: str, spec: MappingSpec,
                        principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.identity_map(subject, spec.role))
+    return _admin_edit(principal, f"identity_map {subject} -> {spec.role}",
+                       lambda ed: ed.identity_map(subject, spec.role))
 
 
 @app.delete("/api/admin/identities/{subject}")
 def admin_identity_unmap(subject: str,
                          principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.identity_unmap(subject))
+    return _admin_edit(principal, f"identity_unmap {subject}", lambda ed: ed.identity_unmap(subject))
 
 
 @app.put("/api/admin/principals/{pid}")
 def admin_principal_set(pid: str, spec: MappingSpec,
                         principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.principal_set(pid, spec.role))
+    return _admin_edit(principal, f"principal_set {pid} -> {spec.role}",
+                       lambda ed: ed.principal_set(pid, spec.role))
 
 
 @app.delete("/api/admin/principals/{pid}")
 def admin_principal_rm(pid: str,
                        principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.principal_rm(pid))
+    return _admin_edit(principal, f"principal_rm {pid}", lambda ed: ed.principal_rm(pid))
 
 
 @app.post("/api/admin/principals/{pid}/token")
@@ -944,23 +963,49 @@ def admin_token_mint(pid: str, principal: Principal = Depends(_require_admin)):
     if pid not in ((rbac.principals or {}) if rbac else {}):
         raise HTTPException(400, f"unknown principal: {pid} — add it first "
                                  f"(PUT /api/admin/principals/{pid})")
-    return {"principal_id": pid, "token": _credentials().mint(pid)}
+    token = _credentials().mint(pid)
+    safe_log_admin(principal, "token_mint", pid)
+    return {"principal_id": pid, "token": token}
 
 
 @app.delete("/api/admin/principals/{pid}/token")
 def admin_token_revoke(pid: str, principal: Principal = Depends(_require_admin)):
-    return {"principal_id": pid, "revoked": _credentials().revoke(pid)}
+    revoked = _credentials().revoke(pid)
+    safe_log_admin(principal, "token_revoke", pid)
+    return {"principal_id": pid, "revoked": revoked}
 
 
 @app.get("/api/admin/tokens")
 def admin_token_list(principal: Principal = Depends(_require_admin)):
-    return {"tokens": _credentials().list_tokens()}
+    tokens = _credentials().list_tokens()
+    safe_log_admin(principal, "token_list", f"{len(tokens)} tokens")
+    return {"tokens": tokens}
 
 
 @app.put("/api/admin/default-role")
 def admin_default_role_set(spec: MappingSpec,
                            principal: Principal = Depends(_require_admin)):
-    return _admin_edit(lambda ed: ed.default_role_set(spec.role))
+    return _admin_edit(principal, f"default_role_set {spec.role}",
+                       lambda ed: ed.default_role_set(spec.role))
+
+
+@app.get("/api/admin/retrievals")
+def admin_retrievals(principal: Principal = Depends(_require_admin),
+                     principal_id: Optional[str] = Query(None, alias="principal"),
+                     kind: Optional[str] = None, tool: Optional[str] = None,
+                     since: Optional[str] = None, until: Optional[str] = None,
+                     path: Optional[str] = None,
+                     limit: int = Query(100, ge=1, le=1000)):
+    # Deliberate choice: querying the log is NOT itself logged as an admin
+    # event (no safe_log_admin call here) — reading history isn't a policy
+    # mutation, and logging every read of the log would make it grow
+    # under its own inspection.
+    from lib.retrieval_log import enabled, get_retrieval_log
+    if not enabled():
+        raise HTTPException(503, "Retrieval log requires BRAIN_RETRIEVAL_LOG=postgres")
+    log = get_retrieval_log(_cfg.database_url)
+    return {"entries": log.query(principal=principal_id, kind=kind, tool=tool,
+                                 since=since, until=until, path=path, limit=limit)}
 
 
 def main():
