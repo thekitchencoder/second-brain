@@ -2,13 +2,11 @@
 
 All notable changes to second-brain are recorded here.
 
-**Release cadence during the profile refactor:** the profile refactor (below) is
-landing as a series of interim pull requests that merge to `main` **without cutting
-a Docker release**. The image published to `kitchencoder/second-brain:latest` remains
-the last tagged version; a version bump and a new release will land once the refactor
-reaches its end state. See the [Roadmap](README.md#roadmap).
+## [2.0.0] — 2026-07-28
 
-## [Unreleased]
+The profile refactor is complete: the engine (this image) is fully separated
+from the profile (a brain's folders, templates, skills, identity, and
+queryable fields) — **one engine, many brains, no fork**.
 
 ### Changed
 - **BREAKING:** profiles no longer ship inside the image. The default profile
@@ -55,12 +53,12 @@ reaches its end state. See the [Roadmap](README.md#roadmap).
   recipe in `docs/recipes/code-server.md`. Existing `:ui` tags remain
   on Docker Hub.
 
-### Profile seam — one engine, many brains (in progress)
+### Profile seam — one engine, many brains
 
-A significant refactor that extracts everything brain-specific out of the engine and
+The refactor that extracts everything brain-specific out of the engine and
 into a selectable **profile**, so a single image can run many brains (work, home,
-private fiction, …) with no fork. A brain self-describes via `<brain>/.brain/`; the
-bundled `ace` profile is the zero-config, offline default.
+private fiction, …) with no fork. A brain self-describes via `<brain>/.brain/`,
+seeded from a profile repo on first init.
 
 - **Profile-driven engine** (#6) — folders, templates, skills, plugin identity, and
   zk conventions are read from the profile instead of hardcoded constants. The bundled
@@ -72,7 +70,7 @@ bundled `ace` profile is the zero-config, offline default.
   container's Claude Code skills are sourced from the active profile; the redundant
   top-level `skills/`, `brain-skills/`, `zk/`, `hooks/`, and `claude/*.md` sources were
   removed in favour of `profiles/ace/`.
-- **Profile-driven queries** (#9, in review) — note-metadata filtering is generated from
+- **Profile-driven queries** (#9) — note-metadata filtering is generated from
   the profile's declared fields: the MCP `brain_query` schema and REST `list_notes`
   filters adapt per profile, with a generic `where` escape hatch and a fail-loud 400 on
   unknown REST filter fields.
@@ -107,9 +105,10 @@ bundled `ace` profile is the zero-config, offline default.
   well-formed profile. The retrieval/audit log and an admin UI are deferred,
   store-backed follow-ups, not part of this build.
 
-**Still to come:** public, forkable profile repositories (community profiles),
-plus the store-backed RBAC-tier follow-ups (retrieval/audit log, admin UI,
-a `PolicyProvider` that generalizes beyond the bundled sqlite-vec store).
+Public, forkable profile repositories and the store-backed RBAC-tier
+follow-ups (retrieval/audit log, `PolicyProvider` beyond the bundled
+sqlite-vec store) shipped within this release; an admin UI for the RBAC
+tier remains a planned follow-up.
 
 ### Backward compatibility
 

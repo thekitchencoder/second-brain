@@ -43,7 +43,7 @@ The `brain-init` wizard will guide you through picking your model provider and e
 
 ### For Developers
 - [Development Guide](docs/development.md): How to build the image, run in development mode, and create new skills or tools.
-- [CHANGELOG](CHANGELOG.md): What has landed on `main`, and the release cadence during the profile refactor.
+- [CHANGELOG](CHANGELOG.md): What has landed in each release.
 
 ---
 
@@ -58,24 +58,25 @@ The `brain-init` wizard will guide you through picking your model provider and e
 
 ## Roadmap
 
-second-brain is mid-way through a **profile refactor** — separating the *engine* (this
-Docker image: search, MCP, editing) from a *profile* (a brain's folders, templates,
-skills, identity, and queryable fields). The goal: **one engine, many brains, no fork** —
-so the same image can run a work brain, a home brain, and a private one, each with its own
-character.
+The **profile refactor** shipped in 2.0.0: the *engine* (this Docker image: search, MCP,
+editing, auth) is fully separated from the *profile* (a brain's folders, templates,
+skills, identity, and queryable fields) — **one engine, many brains, no fork**.
 
-**Landed on `main`** (unreleased):
+**Landed:**
 - Profile-driven engine — a brain self-describes via `<brain>/.brain/`
-- Custom-profile distribution — profiles live in their own public repos ([ace](https://github.com/thekitchencoder/brain-profile-ace), [obsidian](https://github.com/thekitchencoder/brain-profile-obsidian)); the default is cloned from `brain-profile-ace` on first init
+- Profiles live in their own public repos ([ace](https://github.com/thekitchencoder/brain-profile-ace), [obsidian](https://github.com/thekitchencoder/brain-profile-obsidian)); the default is cloned from `brain-profile-ace` on first init, with `profile.toml` schema versioning
 - Profile-driven queries — metadata filters adapt to each profile's fields
-- Auth gate (Seam 6) — static per-principal bearer tokens and an OAuth 2.1 authorization
-  server, shipped behind `profile.auth.mode = "oauth"` (default `none`, a total no-op). See
-  the [Authentication guide](docs/auth.md).
+- Auth — static per-principal bearer tokens and an OAuth 2.1 authorization server behind
+  `profile.auth.mode` (default `none`). See the [Authentication guide](docs/auth.md).
+- Content visibility / RBAC — role-based read/write layers, oracle-safe. See [docs/rbac.md](docs/rbac.md).
+- Full-stack tier — Postgres/pgvector index store, admin plane + agent credentials,
+  per-principal retrieval log
+- Per-brain host identity (`brain-init --brain-name`) and a configurable MCP endpoint for
+  tunnel/reverse-proxy deployments
 
 **Planned:**
-- Content visibility / RBAC enforcement built on top of the auth gate (Seam 7)
+- Admin UI for the RBAC tier
+- Community profiles
 
-These land as **interim pull requests that merge without cutting a release** — the image on
-`:latest` is the last tagged version, and a version bump and new release will come once the
-refactor reaches its end state. Custom profiles are covered in the
-[User Guide](docs/user-guide.md); the running record is in the [CHANGELOG](CHANGELOG.md).
+Custom profiles are covered in the [User Guide](docs/user-guide.md); the running record
+is in the [CHANGELOG](CHANGELOG.md).
