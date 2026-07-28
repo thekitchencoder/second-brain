@@ -3,7 +3,7 @@
 ARG BASE_IMAGE=kitchencoder/second-brain:latest
 FROM ${BASE_IMAGE}
 
-LABEL version="1.1.0"
+LABEL version="2.0.0"
 
 COPY requirements-full.txt /tmp/requirements-full.txt
 RUN python3 -m pip install --no-cache-dir -r /tmp/requirements-full.txt \
