@@ -1,5 +1,18 @@
 # second-brain
 
+> [!WARNING]
+> **Mothballed — August 2026. This repository is archived and read-only.**
+>
+> second-brain v2 is end-of-life. It carried too much v1 baggage, and the profile
+> mechanism never worked as intended in real use. A ground-up successor — **stacks**,
+> designed from scratch against actual requirements rather than v2's constraints — is
+> in development and will take its place. It is not public yet.
+>
+> The published images (`kitchencoder/second-brain:latest`, `:oauth`, `:full`) remain
+> pullable and existing containers keep running, but there will be no further releases,
+> fixes, or support. Everything below describes v2 as it was left at
+> [v2.0.0](https://github.com/thekitchencoder/second-brain/releases/tag/v2.0.0).
+
 Docker container for brain management: zk, semantic search, and Model Context Protocol (MCP) server for Claude Code and Claude Desktop.
 
 The second-brain provides a set of tools and skills to manage a brain of markdown notes using semantic search, structured metadata, and AI capabilities.

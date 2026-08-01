@@ -1,5 +1,15 @@
 # Second Brain
 
+> ## ⚠️ Mothballed — August 2026
+>
+> **This image is no longer maintained.** second-brain v2 is end-of-life and its
+> [source repository](https://github.com/thekitchencoder/second-brain) is archived.
+> A ground-up successor (stacks) is in development and is not public yet.
+>
+> The existing tags below stay pullable and running containers keep working, but
+> there will be **no further releases, fixes, or support**. `latest` is pinned at
+> v2.0.0 and will not move. Everything below documents the image as it was left.
+
 A self-contained Docker image that turns a folder of markdown notes into an AI-accessible second brain. Mount your notes, index them with semantic search, and expose an MCP server so AI clients (Claude Code, Claude Desktop, Open WebUI, LM Studio) can search, read, and write your notes.
 
 ## Quick start
